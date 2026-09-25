@@ -1,0 +1,78 @@
+# ==============================================================================
+# Geo3D Vision - 3D Reconstruction & Geospatial Alignment Pipeline Configuration
+# ==============================================================================
+
+project:
+  name: "drone_survey_demo"
+  work_dir: "storage/outputs"
+  device: "cuda"  # "cuda" or "cpu"
+  seed: 42
+  save_intermediates: true
+
+# ------------------------------------------------------------------------------
+# Step 1: Video Frame & Telemetry Extraction
+# ------------------------------------------------------------------------------
+extract_frames:
+  video_path: "storage/inputs/input_video.mp4"
+  output_dir: "storage/outputs/frames"
+  fps: 2.0                          # Target extraction frequency (frames per second)
+  blur_filter:
+    enabled: true
+    method: "laplacian"             # "laplacian", "fft", or "tenengrad"
+    threshold: 100.0                # Minimum sharpness variance threshold
+  resize:
+    enabled: false
+    max_dimension: 1920             # Max width/height while keeping aspect ratio
+  max_frames: 500                   # Upper limit on frames to extract (0 for unlimited)
+  gps_telemetry:
+    srt_path: ""                    # Optional external .srt / .kml subtitle with DJI telemetry
+    auto_detect_srt: true           # Automatically look for matching .srt beside video_path
+
+# ------------------------------------------------------------------------------
+# Step 2: Structure from Motion (SfM) Camera Pose Estimation
+# ------------------------------------------------------------------------------
+sfm:
+  method: "colmap"                  # "colmap", "dust3r", or "glomap"
+  camera_model: "OPENCV"            # "SIMPLE_PINHOLE", "PINHOLE", "OPENCV", etc.
+  single_camera: true               # Share intrinsics across all video frames
+  matcher: "sequential"             # "sequential", "exhaustive", or "spatial"
+  max_num_features: 4096
+  output_dir: "storage/outputs/sfm"
+
+# ------------------------------------------------------------------------------
+# Step 3: GPS Georeferencing & Sim3 Rigid Alignment
+# ------------------------------------------------------------------------------
+gps_align:
+  enabled: true
+  source: "auto"                    # "srt", "exif", "csv", or "auto"
+  utm_zone: null                    # null for auto-detection from longitude
+  align_method: "umeyama"           # 7-DOF Sim(3) similarity transformation (Scale + Rot + Trans)
+  min_valid_matches: 4
+  output_dir: "storage/outputs/aligned"
+
+# ------------------------------------------------------------------------------
+# Step 4: 3D Gaussian Splatting (3DGS) Training
+# ------------------------------------------------------------------------------
+train_3dgs:
+  iterations: 7000                  # Quick train: 7000, Full: 30000
+  sh_degree: 3
+  densify_until_iter: 5000
+  densification_interval: 100
+  checkpoint_interval: 2000
+  test_iterations: [3000, 7000]
+  output_dir: "storage/outputs/3dgs"
+
+# ------------------------------------------------------------------------------
+# Step 5: Mesh & GIS Geospatial Export
+# ------------------------------------------------------------------------------
+export_mesh:
+  method: "poisson"                 # "poisson", "tsdf", or "point_cloud_only"
+  poisson_depth: 9                  # Octree depth for Poisson reconstruction (8-11)
+  clean_mesh: true
+  formats:
+    - "ply"                         # Standard point cloud / mesh
+    - "obj"                         # Textured 3D Mesh
+    - "las"                         # Georeferenced LiDAR / ASPRS LAS point cloud
+    - "geotiff"                     # 2D Orthomosaic / DSM raster
+    - "3d_tiles"                    # Cesium 3D Tiles b3dm / pnts
+  output_dir: "storage/outputs/exports"
