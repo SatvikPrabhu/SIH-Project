@@ -158,3 +158,8 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+checkpoints/
+*.pth
+*.ply
+*.glb
