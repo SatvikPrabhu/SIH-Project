@@ -23,3 +23,12 @@ Thumbs.db
 # typescript
 next-env.d.ts
 *.tsbuildinfo
+
+# python
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
