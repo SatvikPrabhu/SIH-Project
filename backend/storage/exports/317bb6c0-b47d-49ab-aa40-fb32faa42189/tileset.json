@@ -1,0 +1,45 @@
+{
+  "asset": {
+    "version": "1.0"
+  },
+  "geometricError": 500,
+  "root": {
+    "boundingVolume": {
+      "box": [
+        0,
+        0,
+        0,
+        100,
+        0,
+        0,
+        0,
+        100,
+        0,
+        0,
+        0,
+        50
+      ]
+    },
+    "geometricError": 500,
+    "refine": "ADD",
+    "content": {
+      "boundingVolume": {
+        "box": [
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          50
+        ]
+      },
+      "uri": "model.glb"
+    }
+  }
+}
