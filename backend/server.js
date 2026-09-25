@@ -12,14 +12,22 @@ app.get("/",(req,res)=>{
     res.send("Backend is running");
 });
 
+const droneVideoRoutes=require("./routes/DroneVideoRoutes");
+
+app.use("/api/drone",droneVideoRoutes);
+
 mongoose.connect(process.env.MONGO_URI)
     .then(()=>{
+
         console.log("MongoDB connected");
 
         app.listen(5000,()=>{
             console.log("Server running on port 5000");
         });
+
     })
     .catch((error)=>{
+
         console.log("MongoDB connection error:",error);
+
     });
