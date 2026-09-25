@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+.next/
+venv/
+.venv/
+
+# Local Storage / Outputs
+storage/
+*.ply
+*.las
+*.obj
+*.glb
+*.tif
+
+# Environment & Logs
+.env
+*.log

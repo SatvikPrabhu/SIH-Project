@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-slate-950 text-slate-100 overflow-hidden;
+}
+
+.glass-panel {
+  @apply backdrop-blur-md bg-slate-900/60 border border-slate-800/80;
+}
