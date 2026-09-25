@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #0b0f17;
+  --color-accent: #3b82f6;
+  --color-status: #10b981;
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: #0b0f17;
+  color: #e2e8f0;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: color-mix(in srgb, #3b82f6 40%, transparent);
+}
+
+/* Strip default Cesium chrome so the globe stays a clean canvas */
+.cesium-viewer-bottom,
+.cesium-widget-credits,
+.cesium-credit-logoContainer,
+.cesium-credit-textContainer,
+.cesium-viewer-toolbar,
+.cesium-viewer-animationContainer,
+.cesium-viewer-timelineContainer,
+.cesium-viewer-fullscreenContainer,
+.cesium-viewer-vrContainer,
+.cesium-viewer-geocoderContainer,
+.cesium-viewer-infoBoxContainer,
+.cesium-viewer-selectionIndicatorContainer {
+  display: none !important;
+}
+
+.glass-panel {
+  backdrop-filter: blur(12px);
+  background: rgb(15 23 42 / 0.7);
+  border: 1px solid rgb(30 41 59);
+}
+
+.hud-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(148 163 184);
+}
+
+.tactical-grid {
+  background-image:
+    linear-gradient(rgb(59 130 246 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(59 130 246 / 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+}

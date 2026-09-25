@@ -1,0 +1,25 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+
+# next
+/.next/
+/out/
+
+# cesium static copy (regenerated on dev/build)
+/public/cesium
+
+# env
+.env*
+!.env.example
+
+# debug / os
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# typescript
+next-env.d.ts
+*.tsbuildinfo
