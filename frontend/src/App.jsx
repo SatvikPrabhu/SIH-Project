@@ -14,12 +14,14 @@ import {
   Box, 
   Zap, 
   RefreshCw, 
-  ChevronRight,
-  ShieldCheck,
-  Download,
-  Activity
+  ChevronRight, 
+  ShieldCheck, 
+  Download, 
+  Activity 
 } from 'lucide-react';
+import homePageBgVideo from './assets/HomePageGIF.mp4';
 import './App.css';
+
 
 export default function App() {
   const [videoFile, setVideoFile] = useState(null);
@@ -82,18 +84,6 @@ export default function App() {
     }
   };
 
-  const handleSelectSample = (sampleName) => {
-    setVideoFile({
-      name: `${sampleName}.mp4`,
-      size: 48 * 1024 * 1024,
-      type: 'video/mp4'
-    });
-    setVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
-    setProgress(0);
-    setIsProcessing(false);
-    setCurrentStep(0);
-  };
-
   const handleClearVideo = () => {
     if (videoUrl && !videoUrl.startsWith('http')) {
       URL.revokeObjectURL(videoUrl);
@@ -145,7 +135,7 @@ export default function App() {
 
       {/* 2. Hero & Video Upload Section with 3D Earth Background */}
       <main className="hero-section" id="upload-section">
-        {/* Google Earth 3D Flyover Background Video */}
+        {/* 3D Google Earth Background Video Loop */}
         <div className="hero-video-bg-container">
           <video
             autoPlay
@@ -153,37 +143,28 @@ export default function App() {
             muted
             playsInline
             className="hero-bg-video"
-            poster="https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1920&q=80"
-          >
-            <source 
-              src="https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-city-traffic-and-buildings-at-night-41559-large.mp4" 
-              type="video/mp4" 
-            />
-          </video>
+            src={homePageBgVideo}
+          />
           {/* Tactical Overlay & Vignette Gradient */}
           <div className="hero-video-overlay"></div>
           <div className="hero-grid-overlay"></div>
         </div>
 
+
         <div className="hero-content">
-          {/* Badge with Satellite Status */}
-          <div className="hero-pill">
-            <span className="live-pulse-dot"></span>
-            <span>3D SATELLITE & UAV RECON ENGINE</span>
+          {/* Semi-Transparent Title Box */}
+          <div className="hero-title-box">
+            <h1 className="hero-heading">
+              Transform Aerial Drone Videos into <br />
+              <span className="text-gradient">Metrically Accurate 3D Models</span>
+            </h1>
+
+            {/* Subtitle */}
+            <p className="hero-subtext">
+              Upload your multi-view drone footage to automatically extract sharp keyframes,
+              estimate camera poses, align with GPS, and reconstruct photorealistic 3D point clouds.
+            </p>
           </div>
-
-          {/* Title in the Center */}
-          <h1 className="hero-heading">
-            Transform Aerial Drone Videos into <br />
-            <span className="text-gradient">Metrically Accurate 3D Models</span>
-          </h1>
-
-          {/* Subtitle */}
-          <p className="hero-subtext">
-            Upload your multi-view drone footage to automatically extract sharp keyframes,
-
-            estimate camera poses, align with GPS, and reconstruct photorealistic 3D point clouds.
-          </p>
 
           {/* Upload Card */}
           <div className="upload-card-wrapper">
@@ -226,29 +207,6 @@ export default function App() {
                   <span className="format-tag">MKV</span>
                   <span className="format-divider">•</span>
                   <span className="format-note">Supports 4K / 1080p aerial footage</span>
-                </div>
-
-                {/* Sample Test Video Quick Selection */}
-                <div className="sample-quick-select">
-                  <span className="sample-label">Or test with a sample drone flight:</span>
-                  <div className="sample-buttons">
-                    <button 
-                      type="button" 
-                      className="sample-pill-btn"
-                      onClick={() => handleSelectSample('Urban_Survey_Flight')}
-                    >
-                      <Video size={13} />
-                      <span>Urban Survey 4K</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      className="sample-pill-btn"
-                      onClick={() => handleSelectSample('Quarry_Terrain_Recon')}
-                    >
-                      <Video size={13} />
-                      <span>Quarry Topography</span>
-                    </button>
-                  </div>
                 </div>
               </div>
             ) : (
