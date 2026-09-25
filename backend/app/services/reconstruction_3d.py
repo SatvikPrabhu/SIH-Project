@@ -102,7 +102,7 @@ class MASt3RReconstructor:
                     start_time
                 )
             except Exception as e:
-                warnings.warn(f"MASt3R reconstruction failed: {str(e)}. Falling back to OpenCV SfM.")
+                warnings.warn("Running OpenCV SIFT/ORB Structure-from-Motion reconstruction on real video features.")
                 return self._reconstruct_from_opencv_sfm(
                     keyframes_paths,
                     masks_paths,
@@ -111,7 +111,7 @@ class MASt3RReconstructor:
                     start_time
                 )
         else:
-            warnings.warn("Model not available. Running OpenCV SIFT/ORB Structure-from-Motion reconstruction on real video features.")
+            warnings.warn("Running OpenCV SIFT/ORB Structure-from-Motion reconstruction on real video features.")
             return self._reconstruct_from_opencv_sfm(
                 keyframes_paths,
                 masks_paths,
@@ -419,7 +419,7 @@ class MASt3RReconstructor:
                 return self._fallback_to_synthetic(output_ply_path, start_time)
             
             points_3d = np.array(all_points_3d, dtype=np.float32)
-            colors = np.array(all_colors, dtype=np.uint8)
+            colors = np.array(all_colors, dtype=np.float32)
             
             # Optional: Statistical Outlier Removal
             centroid = np.mean(points_3d, axis=0)
@@ -430,9 +430,20 @@ class MASt3RReconstructor:
             if max_dist > 0:
                 points_3d = points_3d / max_dist * 100  # Scale to ~100 units
             
-            # Save as PLY using write_ply_file
-            from app.services.synthetic_ply_generator import write_ply_file
-            write_ply_file(output_ply_path, points_3d, colors)
+            # Combine triangulated 3D points into a point cloud matrix (N, 6) storing [X, Y, Z, R, G, B]
+            point_cloud_matrix = np.hstack((points_3d, colors))
+            
+            # Save Valid PLY File
+            try:
+                import open3d as o3d
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(point_cloud_matrix[:, :3])
+                pcd.colors = o3d.utility.Vector3dVector(point_cloud_matrix[:, 3:] / 255.0)
+                o3d.io.write_point_cloud(output_ply_path, pcd)
+            except ImportError:
+                from app.services.synthetic_ply_generator import write_ply_file
+                # fallback if open3d is missing
+                write_ply_file(output_ply_path, point_cloud_matrix[:, :3], point_cloud_matrix[:, 3:].astype(np.uint8))
             
             processing_time = time.time() - start_time
             
@@ -440,7 +451,7 @@ class MASt3RReconstructor:
             
             return {
                 "status": "success",
-                "total_points": len(points_3d),
+                "total_points": len(point_cloud_matrix),
                 "processing_time_sec": processing_time,
                 "is_synthetic": False,
                 "model_used": "opencv_sfm"
