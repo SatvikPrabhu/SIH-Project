@@ -164,3 +164,4 @@ checkpoints/
 *.pth
 *.ply
 *.glb
+generation/dust3r/
