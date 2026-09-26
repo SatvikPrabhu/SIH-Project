@@ -105,6 +105,7 @@ backend/storage/*
 
 # Raw media files
 *.mp4
+!frontend/src/assets/*.mp4
 *.mov
 *.avi
 *.mkv
