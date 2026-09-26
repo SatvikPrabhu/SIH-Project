@@ -73,24 +73,22 @@ print("Solving global scene alignment...")
 scene = global_aligner(output, device=device, mode=GlobalAlignerMode.PointCloudOptimizer)
 loss = scene.compute_global_alignment(init='mst', niter=300, schedule='cosine')
 
-# Set confidence threshold to filter out low-confidence background points
+# Set confidence threshold to filter out background/low-confidence points
 scene.min_conf_thr = 3.0
 
-# Extract point arrays, RGB images, and confidence masks correctly
-pts3d = scene.get_pts3d()  # list of (H, W, 3) point tensors
-masks = scene.get_masks()  # list of (H, W) confidence boolean tensors
-imgs = scene.imgs          # list of original RGB image tensors or arrays
+# Extract point arrays, RGB images, and confidence masks across views
+pts3d = scene.get_pts3d()
+masks = scene.get_masks()
+imgs = scene.imgs
 
 valid_pts = []
 valid_colors = []
 
 for p, c, m in zip(pts3d, imgs, masks):
-    # Convert PyTorch tensors to NumPy arrays if necessary
     p_np = p.detach().cpu().numpy() if isinstance(p, torch.Tensor) else p
     m_np = m.detach().cpu().numpy() if isinstance(m, torch.Tensor) else m
     c_np = c.detach().cpu().numpy() if isinstance(c, torch.Tensor) else c
     
-    # Flatten arrays to filter by mask
     m_flat = m_np.flatten()
     p_flat = p_np.reshape(-1, 3)[m_flat]
     c_flat = c_np.reshape(-1, 3)[m_flat]
@@ -101,7 +99,7 @@ for p, c, m in zip(pts3d, imgs, masks):
 all_pts = np.vstack(valid_pts)
 all_colors = np.vstack(valid_colors)
 
-# Normalize color range to uint8 [0, 255] if normalized to [0, 1]
+# Normalize color range to uint8 [0, 255] if necessary
 if all_colors.max() <= 1.0:
     all_colors = (all_colors * 255).astype(np.uint8)
 
