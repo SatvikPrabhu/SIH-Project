@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Navbar from './components/Navbar';
+import ModelViewer from './components/ModelViewer';
 import { 
   Upload, 
   Video, 
@@ -18,7 +19,8 @@ import {
   ChevronRight,
   Database,
   Globe2,
-  Box
+  Box,
+  RotateCcw
 } from 'lucide-react';
 import heroBgVideo from './assets/HomePageGIF.mp4';
 import './App.css';
@@ -31,6 +33,10 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
   const [backendOnline, setBackendOnline] = useState(false);
+
+  // 3D Model Viewer State & Cache-Busting Key
+  const [showViewer, setShowViewer] = useState(false);
+  const [modelKey, setModelKey] = useState(Date.now());
   
   // Pipeline Settings
   const [fps, setFps] = useState(2);
@@ -94,7 +100,6 @@ export default function App() {
   };
 
   const handleSelectSample = (sampleName) => {
-    // Create a mock video object for demo testing
     const mockFile = {
       name: `${sampleName}.mp4`,
       size: 42 * 1024 * 1024,
@@ -118,6 +123,16 @@ export default function App() {
     setProgress(0);
     setCurrentStep(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Toggle or reload 3D Model Viewer with timestamp cache-buster
+  const handleToggleViewer = () => {
+    setShowViewer(true);
+    setModelKey(Date.now());
+  };
+
+  const handleCloseViewer = () => {
+    setShowViewer(false);
   };
 
   const startPipelineSimulation = async () => {
@@ -150,6 +165,9 @@ export default function App() {
     }
 
     setIsProcessing(false);
+    // Automatically reveal the 3D Viewer upon pipeline completion
+    setShowViewer(true);
+    setModelKey(Date.now());
   };
 
   return (
@@ -363,7 +381,7 @@ export default function App() {
                     <button 
                       type="button" 
                       className={`process-launch-btn ${isProcessing ? 'disabled' : ''}`}
-                      onClick={startPipelineSimulation}
+                      onClick={progress === 100 ? handleToggleViewer : startPipelineSimulation}
                       disabled={isProcessing}
                     >
                       {isProcessing ? (
@@ -374,7 +392,7 @@ export default function App() {
                       ) : progress === 100 ? (
                         <>
                           <CheckCircle2 size={18} className="text-emerald" />
-                          <span>3D Model Ready • View in 3D</span>
+                          <span>3D Model Ready • View in 3D Viewport</span>
                         </>
                       ) : (
                         <>
@@ -388,6 +406,80 @@ export default function App() {
               </div>
             )}
           </div>
+
+          {/* 3D Model Inspection & Viewport Controller Section */}
+          <section className="inspection-section" id="model-inspection">
+            {/* Top Action Bar */}
+            <div className="inspection-header-bar">
+              <div className="inspection-title-group">
+                <div className="inspection-icon-badge">
+                  <Box size={22} />
+                </div>
+                <div>
+                  <h3 className="inspection-heading">
+                    3D Spatial Reconstruction Inspector
+                  </h3>
+                  <p className="inspection-subheading">
+                    Real-time WebGL/Three.js rendering for DUSt3R point clouds and exported GLBs
+                  </p>
+                </div>
+              </div>
+
+              <div className="inspection-actions-group">
+                <button
+                  type="button"
+                  className={`btn-view-model ${showViewer ? 'active-reload' : ''}`}
+                  onClick={handleToggleViewer}
+                >
+                  {showViewer ? (
+                    <>
+                      <RotateCcw size={16} />
+                      <span>Reload / View Reconstruction</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye size={16} />
+                      <span>View Generated Model</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Viewer Active or Empty State Placeholder */}
+            {showViewer ? (
+              <div className="viewer-active-wrapper">
+                <button
+                  type="button"
+                  className="btn-close-viewport"
+                  onClick={handleCloseViewer}
+                  title="Close 3D Viewport"
+                >
+                  <X size={14} />
+                  <span>Close Viewport ✕</span>
+                </button>
+                <ModelViewer modelUrl={`/models/model.glb?v=${modelKey}`} />
+              </div>
+            ) : (
+              <div className="viewer-empty-state-card">
+                <div className="empty-state-icon">
+                  <Layers size={26} />
+                </div>
+                <h4 className="empty-state-title">No Active 3D Session Open</h4>
+                <p className="empty-state-desc">
+                  Click <strong>"View Generated Model"</strong> above to inspect <code>public/models/model.glb</code> or trigger a reconstruction pipeline.
+                </p>
+                <button
+                  type="button"
+                  className="btn-view-model"
+                  onClick={handleToggleViewer}
+                >
+                  <Eye size={15} />
+                  <span>View Generated Model</span>
+                </button>
+              </div>
+            )}
+          </section>
 
           {/* Quick Metrics & Feature Highlights */}
           <div className="features-highlight-grid" id="features">
