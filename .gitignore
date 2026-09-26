@@ -105,6 +105,7 @@ backend/storage/*
 
 # Raw media files
 *.mp4
+!frontend/src/assets/*.mp4
 *.mov
 *.avi
 *.mkv
@@ -158,3 +159,9 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+checkpoints/
+*.pth
+*.ply
+*.glb
+generation/dust3r/
