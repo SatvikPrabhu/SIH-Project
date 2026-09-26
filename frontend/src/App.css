@@ -15,6 +15,37 @@
   align-items: center;
   justify-content: center;
   min-height: calc(100vh - 120px);
+  overflow: hidden;
+}
+
+/* Background Video Layer */
+.hero-video-bg-wrapper {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hero-video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  opacity: 1;
+  filter: saturate(1.2) contrast(1.1);
+  transform: translateY(-18%) scale(1.25);
+}
+
+.hero-video-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(10, 15, 29, 0.4) 0%, rgba(10, 15, 29, 0.85) 75%, var(--bg-primary, #0a0f1d) 100%),
+    linear-gradient(180deg, rgba(10, 15, 29, 0.6) 0%, transparent 35%, var(--bg-primary, #0a0f1d) 100%);
+  backdrop-filter: blur(1px);
 }
 
 /* Background Ambient Glow Elements */
@@ -47,7 +78,7 @@
   position: absolute;
   inset: 0;
   background-size: 40px 40px;
-  background-image: 
+  background-image:
     linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   mask-image: radial-gradient(ellipse 60% 50% at 50% 40%, #000 70%, transparent 100%);
@@ -98,6 +129,26 @@
   -webkit-text-fill-color: transparent;
 }
 
+/* Hero Text Card - Semi-Transparent Glass Box */
+.hero-text-card {
+  position: relative;
+  background: rgba(10, 15, 29, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 24px;
+  padding: 36px 40px 32px;
+  margin-bottom: 40px;
+  box-shadow: 
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 35px rgba(56, 189, 248, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 920px;
+}
+
 /* Center Placeholder Title */
 .hero-title {
   font-size: 52px;
@@ -105,7 +156,7 @@
   line-height: 1.15;
   letter-spacing: -1.2px;
   color: #ffffff;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
   max-width: 900px;
 }
 
@@ -122,8 +173,8 @@
   font-size: 18px;
   line-height: 1.6;
   color: var(--text-secondary);
-  max-width: 720px;
-  margin-bottom: 44px;
+  max-width: 760px;
+  margin-bottom: 0;
   font-weight: 400;
 }
 
@@ -759,31 +810,44 @@
   .hero-title {
     font-size: 38px;
   }
+
   .features-highlight-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 768px) {
+  .hero-text-card {
+    padding: 24px 20px 22px;
+    border-radius: 18px;
+    margin-bottom: 28px;
+  }
+
   .hero-title {
     font-size: 30px;
   }
+
   .hero-subtitle {
     font-size: 15px;
   }
+
   .preview-body-grid {
     grid-template-columns: 1fr;
   }
+
   .features-highlight-grid {
     grid-template-columns: 1fr;
   }
+
   .footer-content {
     flex-direction: column;
   }
+
   .big-upload-btn {
     padding: 14px 24px;
     gap: 14px;
   }
+
   .btn-main-text {
     font-size: 17px;
   }

@@ -20,6 +20,7 @@ import {
   Globe2,
   Box
 } from 'lucide-react';
+import heroBgVideo from './assets/HomePageGIF.mp4';
 import './App.css';
 
 export default function App() {
@@ -158,28 +159,39 @@ export default function App() {
 
       {/* Main Hero Container */}
       <main className="hero-section" id="home">
+        {/* Background Video Layer */}
+        <div className="hero-video-bg-wrapper">
+          <video
+            className="hero-video-element"
+            autoPlay
+            loop
+            muted
+            playsInline
+          >
+            <source src={heroBgVideo} type="video/mp4" />
+          </video>
+          <div className="hero-video-overlay"></div>
+        </div>
+
         <div className="hero-glow-sphere sphere-1"></div>
         <div className="hero-glow-sphere sphere-2"></div>
         <div className="hero-grid-pattern"></div>
 
         <div className="hero-content">
-          {/* Top Pill Badge */}
-          <div className="hero-badge">
-            <span className="badge-sparkle"><Sparkles size={14} /></span>
-            <span className="badge-text">AI-Powered Video-to-3D Geospatial Reconstruction</span>
+          {/* Semi-transparent Glass Card for Hero Heading */}
+          <div className="hero-text-card">
+            {/* Placeholder Title in the Center */}
+            <h1 className="hero-title">
+              Transform Aerial Drone Videos into <br />
+              <span className="text-gradient">Interactive 3D Geospatial Twins</span>
+            </h1>
+
+            {/* Center Subtitle */}
+            <p className="hero-subtitle">
+              Upload multi-view drone footage to automatically extract motion-aware keyframes,
+              segment semantic terrain with YOLOv8, and reconstruct dense 3D point clouds with Dust3R.
+            </p>
           </div>
-
-          {/* Placeholder Title in the Center */}
-          <h1 className="hero-title">
-            Transform Aerial Drone Videos into <br />
-            <span className="text-gradient">Interactive 3D Geospatial Twins</span>
-          </h1>
-
-          {/* Center Subtitle */}
-          <p className="hero-subtitle">
-            Upload multi-view drone footage to automatically extract motion-aware keyframes,
-            segment semantic terrain with YOLOv8, and reconstruct dense 3D point clouds with Dust3R.
-          </p>
 
           {/* Upload Area / Big Upload Video Button */}
           <div className="upload-container" id="upload-section">
