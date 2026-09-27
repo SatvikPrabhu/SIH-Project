@@ -28,20 +28,70 @@ except ImportError:
     HAS_TORCH = False
 
 def load_aligned_sparse_points(aligned_dir: Path) -> np.ndarray:
+    """Loads georeferenced sparse point cloud from Step 3.
+    Supports both ASCII and binary PLY formats using Open3D.
+    Returns an (N,3) float32 array of XYZ points.
+    """
+    ply_path = aligned_dir / "aligned_sparse_points.ply"
+    if not ply_path.exists():
+        logger.warning("Aligned PLY not found. Initializing random points.")
+        np.random.seed(42)
+        return np.random.uniform(-10, 10, (5000, 3)).astype(np.float32)
+
+    try:
+        import open3d as o3d
+        pcd = o3d.io.read_point_cloud(str(ply_path))
+        if pcd.is_empty():
+            raise ValueError("Empty point cloud")
+        points = np.asarray(pcd.points, dtype=np.float32)
+        if points.size == 0:
+            raise ValueError("No points loaded")
+        return points
+    except Exception as e:
+        logger.warning(f"Failed to read PLY with Open3D ({e}); falling back to manual ASCII parsing.")
+        # Fallback ASCII parsing as before
+        try:
+            with open(ply_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except UnicodeDecodeError:
+            logger.warning("PLY appears binary and Open3D failed; using random points fallback.")
+            np.random.seed(42)
+            return np.random.uniform(-10, 10, (5000, 3)).astype(np.float32)
+        header_ended = False
+        points = []
+        for line in lines:
+            if header_ended:
+                parts = line.strip().split()
+                if len(parts) >= 3:
+                    points.append([float(parts[0]), float(parts[1]), float(parts[2])])
+            elif line.strip() == "end_header":
+                header_ended = True
+        if points:
+            return np.array(points, dtype=np.float32)
+        else:
+            logger.warning("No points parsed from PLY; using random fallback.")
+            np.random.seed(42)
+            return np.random.uniform(-10, 10, (5000, 3)).astype(np.float32)
+
     """Loads georeferenced sparse point cloud from Step 3."""
     ply_path = aligned_dir / "aligned_sparse_points.ply"
     if ply_path.exists():
         points = []
-        with open(ply_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-            header_ended = False
-            for line in lines:
-                if header_ended:
-                    parts = line.strip().split()
-                    if len(parts) >= 3:
-                        points.append([float(parts[0]), float(parts[1]), float(parts[2])])
-                elif line.strip() == "end_header":
-                    header_ended = True
+        try:
+            with open(ply_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except UnicodeDecodeError:
+            logger.warning("PLY file appears to be binary or not UTF-8; falling back to random points.")
+            return np.random.uniform(-10, 10, (5000, 3)).astype(np.float32)
+        header_ended = False
+        points = []
+        for line in lines:
+            if header_ended:
+                parts = line.strip().split()
+                if len(parts) >= 3:
+                    points.append([float(parts[0]), float(parts[1]), float(parts[2])])
+            elif line.strip() == "end_header":
+                header_ended = True
         if points:
             return np.array(points, dtype=np.float32)
 

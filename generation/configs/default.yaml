@@ -17,9 +17,9 @@ extract_frames:
   output_dir: "storage/outputs/frames"
   fps: 2.0                          # Target extraction frequency (frames per second)
   blur_filter:
-    enabled: true
+    enabled: false
     method: "laplacian"             # "laplacian", "fft", or "tenengrad"
-    threshold: 100.0                # Minimum sharpness variance threshold
+    threshold: 0.0                # Disabled blur filter; accept all frames
   resize:
     enabled: false
     max_dimension: 1920             # Max width/height while keeping aspect ratio
