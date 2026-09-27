@@ -42,6 +42,15 @@ gps_align_mod = load_module_from_path("gps_align_mod", generation_dir / "scripts
 train_3dgs_mod = load_module_from_path("train_3dgs_mod", generation_dir / "scripts" / "04_train_3dgs.py")
 export_mesh_mod = load_module_from_path("export_mesh_mod", generation_dir / "scripts" / "05_export_mesh.py")
 
+# Load DUSt3R reconstruction module
+dust3r_script = generation_dir / "dust3r" / "run_dust3r_recon.py"
+if dust3r_script.exists():
+    dust3r_recon_mod = load_module_from_path("dust3r_recon_mod", dust3r_script)
+else:
+    dust3r_recon_mod = None
+
+DUST3R_WEIGHTS = generation_dir / "dust3r" / "checkpoints" / "DUSt3R_ViTLarge_BaseDecoder_512_linear.pth"
+
 logger = setup_logger("Master-Pipeline")
 
 def load_yaml_config(config_path: Path) -> Dict[str, Any]:
@@ -68,27 +77,44 @@ def print_banner():
     print(banner)
 
 
-def run_full_pipeline(config_path: str, video_override: str = None, steps_to_run: List[int] = None):
+def run_full_pipeline(config_path: str = "generation/configs/default.yaml", video_override: str = None, output_dir_override: str = None, srt_path_override: str = None, steps_to_run: List[int] = None):
     """
     Executes selected or all steps of the Geo3D reconstruction pipeline.
     """
     print_banner()
-    cfg_p = Path(config_path)
+    cfg_p = Path(config_path) if Path(config_path).exists() else generation_dir / "configs" / "default.yaml"
     config = load_yaml_config(cfg_p)
 
     # Optional video path override from CLI
     if video_override:
         config["extract_frames"]["video_path"] = video_override
 
+    # Optional SRT telemetry path override from CLI
+    if srt_path_override:
+        config["_srt_path_override"] = srt_path_override
+
     # Resolve output base directories
-    work_dir = Path(config.get("project", {}).get("work_dir", "storage/outputs"))
+    if output_dir_override:
+        # Per-job run: ALL subdirectories must live inside the job-specific work_dir.
+        # Ignore YAML paths which are hardcoded global defaults.
+        work_dir = Path(output_dir_override).resolve()
+        frames_dir  = work_dir / "frames"
+        sfm_dir     = work_dir / "sfm"
+        aligned_dir = work_dir / "aligned"
+        train_dir   = work_dir / "3dgs"
+        export_dir  = work_dir / "exports"
+    else:
+        # Default run from CLI without --output_dir: use YAML config paths
+        work_dir    = Path(config.get("project", {}).get("work_dir", "storage/outputs")).resolve()
+        frames_dir  = Path(config["extract_frames"].get("output_dir",  str(work_dir / "frames")))
+        sfm_dir     = Path(config["sfm"].get("output_dir",             str(work_dir / "sfm")))
+        aligned_dir = Path(config["gps_align"].get("output_dir",       str(work_dir / "aligned")))
+        train_dir   = Path(config["train_3dgs"].get("output_dir",      str(work_dir / "3dgs")))
+        export_dir  = Path(config["export_mesh"].get("output_dir",     str(work_dir / "exports")))
+
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    frames_dir = Path(config["extract_frames"].get("output_dir", str(work_dir / "frames")))
-    sfm_dir = Path(config["sfm"].get("output_dir", str(work_dir / "sfm")))
-    aligned_dir = Path(config["gps_align"].get("output_dir", str(work_dir / "aligned")))
-    train_dir = Path(config["train_3dgs"].get("output_dir", str(work_dir / "3dgs")))
-    export_dir = Path(config["export_mesh"].get("output_dir", str(work_dir / "exports")))
+
 
     all_steps = steps_to_run is None or len(steps_to_run) == 0
     start_total_time = time.time()
@@ -138,23 +164,58 @@ def run_full_pipeline(config_path: str, video_override: str = None, steps_to_run
                     blur_method=c.get("blur_filter", {}).get("method", "laplacian"),
                     resize_max=c.get("resize", {}).get("max_dimension") if c.get("resize", {}).get("enabled") else None,
                     max_frames=c.get("max_frames", 0),
-                    srt_path=c.get("gps_telemetry", {}).get("srt_path") or None
+                    srt_path=config.get("_srt_path_override") or c.get("gps_telemetry", {}).get("srt_path") or None
                 )
                 results["step_1"] = res1
 
     # --------------------------------------------------------------------------
-    # Step 2: SfM Camera Pose Estimation
+    # Step 2: DUSt3R Multi-View 3D Reconstruction
+    # Replaces COLMAP SfM — DUSt3R operates directly on extracted frames
+    # without requiring camera calibration. Falls back to COLMAP/synthetic
+    # if DUSt3R is unavailable.
     # --------------------------------------------------------------------------
+    dust3r_output_dir = work_dir / "dust3r"
+    dust3r_glb = dust3r_output_dir / "model.glb"
+    dust3r_ply = dust3r_output_dir / "model.ply"
+
     if all_steps or 2 in steps_to_run:
-        with PipelineTimer("Step 2: Structure from Motion (SfM)", logger):
-            c = config["sfm"]
-            res2 = run_sfm_mod.run_sfm(
-                images_dir=str(frames_dir),
-                output_dir=str(sfm_dir),
-                camera_model=c.get("camera_model", "OPENCV"),
-                matcher=c.get("matcher", "sequential")
-            )
-            results["step_2"] = res2
+        if dust3r_recon_mod is not None and DUST3R_WEIGHTS.exists():
+            with PipelineTimer("Step 2: DUSt3R Multi-View 3D Reconstruction", logger):
+                logger.info(f"Running DUSt3R on frames: {frames_dir}")
+                try:
+                    res2 = dust3r_recon_mod.run_dust3r(
+                        images_dir=str(frames_dir),
+                        output_dir=str(dust3r_output_dir),
+                        weights_path=str(DUST3R_WEIGHTS),
+                        image_size=512,
+                        niter=300,
+                        conf_thr=3.0,
+                        max_images=20
+                    )
+                    results["step_2"] = res2
+                    logger.info(f"DUSt3R generated {res2['num_points']:,} 3D points -> {dust3r_glb}")
+                except Exception as e:
+                    logger.error(f"DUSt3R reconstruction failed: {e}")
+                    logger.warning("Falling back to COLMAP/synthetic SfM...")
+                    c = config["sfm"]
+                    res2 = run_sfm_mod.run_sfm(
+                        images_dir=str(frames_dir),
+                        output_dir=str(sfm_dir),
+                        camera_model=c.get("camera_model", "OPENCV"),
+                        matcher=c.get("matcher", "sequential")
+                    )
+                    results["step_2"] = res2
+        else:
+            logger.warning("DUSt3R weights not found. Falling back to COLMAP/synthetic SfM...")
+            with PipelineTimer("Step 2: Structure from Motion (SfM) [COLMAP Fallback]", logger):
+                c = config["sfm"]
+                res2 = run_sfm_mod.run_sfm(
+                    images_dir=str(frames_dir),
+                    output_dir=str(sfm_dir),
+                    camera_model=c.get("camera_model", "OPENCV"),
+                    matcher=c.get("matcher", "sequential")
+                )
+                results["step_2"] = res2
 
     # --------------------------------------------------------------------------
     # Step 3: GPS Georeferencing & Sim(3) Alignment
@@ -171,11 +232,18 @@ def run_full_pipeline(config_path: str, video_override: str = None, steps_to_run
             results["step_3"] = res3
 
     # --------------------------------------------------------------------------
-    # Step 4: 3D Gaussian Splatting Training
+    # Step 4: 3D Gaussian Splatting Training (using DUSt3R PLY as seed if available)
     # --------------------------------------------------------------------------
     if all_steps or 4 in steps_to_run:
         with PipelineTimer("Step 4: 3D Gaussian Splatting Training", logger):
             c = config["train_3dgs"]
+            # Use DUSt3R aligned PLY as 3DGS seed if available
+            if dust3r_ply.exists():
+                import shutil
+                aligned_seed = aligned_dir / "aligned_sparse_points.ply"
+                aligned_seed.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(dust3r_ply, aligned_seed)
+                logger.info(f"Using DUSt3R point cloud as 3DGS seed: {aligned_seed}")
             res4 = train_3dgs_mod.train_3dgs_pipeline(
                 aligned_dir=str(aligned_dir),
                 frames_dir=str(frames_dir),
@@ -188,11 +256,16 @@ def run_full_pipeline(config_path: str, video_override: str = None, steps_to_run
 
     # --------------------------------------------------------------------------
     # Step 5: Multi-Format Mesh & GIS Export
+    # Prefer DUSt3R model.ply if 3DGS final ply is unavailable
     # --------------------------------------------------------------------------
     if all_steps or 5 in steps_to_run:
         with PipelineTimer("Step 5: Mesh & GIS Geospatial Export", logger):
             c = config["export_mesh"]
+            # Prefer 3DGS output, fall back to DUSt3R direct output
             model_ply = train_dir / "point_cloud_final.ply"
+            if not model_ply.exists() and dust3r_ply.exists():
+                model_ply = dust3r_ply
+                logger.info(f"Using DUSt3R PLY for export (3DGS PLY not found): {model_ply}")
             res5 = export_mesh_mod.run_export_pipeline(
                 input_model=str(model_ply),
                 output_dir=str(export_dir),
@@ -201,16 +274,38 @@ def run_full_pipeline(config_path: str, video_override: str = None, steps_to_run
             )
             results["step_5"] = res5
 
+            # Also copy DUSt3R GLB directly if it exists (fastest path to viewer)
+            if dust3r_glb.exists():
+                target_dust3r_glb = work_dir / "model.glb"
+                try:
+                    import shutil
+                    shutil.copy2(dust3r_glb, target_dust3r_glb)
+                    logger.info(f"Copied DUSt3R model.glb to work_dir root: {target_dust3r_glb}")
+                except Exception as e:
+                    logger.warning(f"Could not copy DUSt3R GLB: {e}")
+            
+            # Ensure model.glb is available at root of work_dir for direct backend consumption
+            exported_glb = export_dir / "model.glb"
+            target_work_glb = work_dir / "model.glb"
+            if exported_glb.exists() and not target_work_glb.exists():
+                try:
+                    import shutil
+                    shutil.copy2(exported_glb, target_work_glb)
+                except Exception as e:
+                    logger.warning(f"Could not copy model.glb to root work_dir: {e}")
+
     total_elapsed = time.time() - start_total_time
     mins, secs = divmod(total_elapsed, 60)
     logger.info(f"{LogColors.GREEN}{LogColors.BOLD}[SUCCESS] Pipeline finished successfully in {int(mins)}m {secs:.2f}s!{LogColors.RESET}")
-    logger.info(f"Artifacts exported to: {export_dir.resolve()}")
+    logger.info(f"Artifacts exported to: {work_dir.resolve()}")
     return results
 
 def main():
     parser = argparse.ArgumentParser(description="Geo3D Reconstruction & Georeferencing Pipeline")
     parser.add_argument("--config", type=str, default="generation/configs/default.yaml", help="Path to default.yaml configuration")
-    parser.add_argument("--video", type=str, default=None, help="Input video file path override")
+    parser.add_argument("--video", "--video_path", dest="video", type=str, default=None, help="Input video file path override")
+    parser.add_argument("--output_dir", "--out", dest="output_dir", type=str, default=None, help="Output directory path override")
+    parser.add_argument("--srt", type=str, default=None, help="Optional path to DJI SRT telemetry file")
     parser.add_argument("--step", type=str, default=None, help="Comma-separated step numbers to execute (e.g. 1,2,3)")
     parser.add_argument("--all", action="store_true", help="Run entire end-to-end pipeline")
     args = parser.parse_args()
@@ -222,6 +317,8 @@ def main():
     run_full_pipeline(
         config_path=args.config,
         video_override=args.video,
+        output_dir_override=args.output_dir,
+        srt_path_override=args.srt,
         steps_to_run=steps
     )
 

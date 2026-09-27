@@ -42,7 +42,10 @@ except ImportError:
     HAS_RASTERIO = False
 
 def load_point_cloud_data(model_ply_path: Path) -> Tuple[np.ndarray, np.ndarray]:
-    """Loads 3D coordinates and RGB colors from a PLY file."""
+    """
+    Loads 3D coordinates and RGB colors from a PLY file.
+    Supports both binary (DUSt3R trimesh output) and ASCII PLY formats.
+    """
     if not model_ply_path.exists():
         logger.warning(f"Input PLY not found at {model_ply_path}. Generating terrain sample...")
         np.random.seed(42)
@@ -50,26 +53,56 @@ def load_point_cloud_data(model_ply_path: Path) -> Tuple[np.ndarray, np.ndarray]
         cols = np.random.randint(60, 200, (10000, 3)).astype(np.uint8)
         return pts, cols
 
+    # Try trimesh first — handles both binary and ASCII PLY (DUSt3R exports binary)
+    try:
+        import trimesh
+        loaded = trimesh.load(str(model_ply_path))
+        if isinstance(loaded, trimesh.PointCloud):
+            pts = np.asarray(loaded.vertices, dtype=np.float32)
+            if loaded.colors is not None and len(loaded.colors):
+                cols = np.asarray(loaded.colors[:, :3], dtype=np.uint8)
+            else:
+                cols = np.full((len(pts), 3), 180, dtype=np.uint8)
+            logger.info(f"Loaded {len(pts):,} points from PLY via trimesh (PointCloud)")
+            return pts, cols
+        elif hasattr(loaded, "vertices"):
+            pts = np.asarray(loaded.vertices, dtype=np.float32)
+            if hasattr(loaded, "visual") and hasattr(loaded.visual, "vertex_colors") and loaded.visual.vertex_colors is not None:
+                cols = np.asarray(loaded.visual.vertex_colors[:, :3], dtype=np.uint8)
+            else:
+                cols = np.full((len(pts), 3), 180, dtype=np.uint8)
+            logger.info(f"Loaded {len(pts):,} points from PLY via trimesh (Mesh)")
+            return pts, cols
+    except Exception as e:
+        logger.warning(f"trimesh PLY load failed ({e}), falling back to ASCII reader...")
+
+    # ASCII fallback (for legacy PLY files written by the 3DGS step)
     pts = []
     cols = []
-    with open(model_ply_path, "r", encoding="utf-8", errors="ignore") as f:
-        lines = f.readlines()
+    try:
+        with open(model_ply_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
         header_ended = False
         for line in lines:
             if header_ended:
                 parts = line.strip().split()
                 if len(parts) >= 3:
                     pts.append([float(parts[0]), float(parts[1]), float(parts[2])])
-                    if len(parts) >= 6 and parts[3].isdigit():
-                        cols.append([int(parts[3]), int(parts[4]), int(parts[5])])
+                    if len(parts) >= 6 and parts[3].replace(".", "").lstrip("-").isdigit():
+                        cols.append([int(float(parts[3])), int(float(parts[4])), int(float(parts[5]))])
                     else:
                         cols.append([180, 200, 220])
             elif line.strip() == "end_header":
                 header_ended = True
+    except Exception as e:
+        logger.error(f"ASCII PLY read also failed: {e}")
 
     pts_arr = np.array(pts, dtype=np.float32) if pts else np.empty((0, 3), dtype=np.float32)
     cols_arr = np.array(cols, dtype=np.uint8) if cols else np.empty((0, 3), dtype=np.uint8)
+    logger.info(f"Loaded {len(pts_arr):,} points from PLY via ASCII reader")
     return pts_arr, cols_arr
+
+
 
 def export_obj_mesh(points: np.ndarray, colors: np.ndarray, output_path: Path, depth: int = 9) -> bool:
     """Generates surface mesh using Open3D Poisson Reconstruction and exports OBJ."""
@@ -236,19 +269,31 @@ def run_export_pipeline(
         export_obj_mesh(points, colors, obj_path, depth=poisson_depth)
         exported_files["obj"] = str(obj_path.resolve())
 
-    # 2. ASPRS LAS Point Cloud
+    # 2. GLB 3D Point Cloud for Web Viewers (Three.js / ModelViewer)
+    if "glb" in formats or True:
+        try:
+            import trimesh
+            glb_path = out_p / "model.glb"
+            pcd = trimesh.PointCloud(vertices=points, colors=colors)
+            pcd.export(str(glb_path))
+            exported_files["glb"] = str(glb_path.resolve())
+            logger.info(f"Exported Three.js/WebGL GLB model -> {glb_path.name}")
+        except Exception as e:
+            logger.warning(f"Trimesh GLB export fallback: {e}")
+
+    # 3. ASPRS LAS Point Cloud
     if "las" in formats:
         las_path = out_p / "point_cloud.las"
         export_las_lidar(points, colors, las_path)
         exported_files["las"] = str(las_path.resolve())
 
-    # 3. GeoTIFF DSM
+    # 4. GeoTIFF DSM
     if "geotiff" in formats:
         dsm_path = out_p / "elevation_dsm.tif"
         export_dsm_geotiff(points, dsm_path)
         exported_files["geotiff"] = str(dsm_path.resolve())
 
-    # 4. Cesium 3D Tiles
+    # 5. Cesium 3D Tiles
     if "3d_tiles" in formats:
         min_p = np.min(points, axis=0).tolist() if len(points) else [0, 0, 0]
         max_p = np.max(points, axis=0).tolist() if len(points) else [10, 10, 10]

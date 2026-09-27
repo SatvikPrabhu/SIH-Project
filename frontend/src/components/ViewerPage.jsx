@@ -9,7 +9,9 @@ import {
   Sliders, 
   CheckCircle2,
   Sparkles,
-  Maximize2
+  Maximize2,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import './ViewerPage.css';
 
@@ -20,9 +22,16 @@ export default function ViewerPage({
   onBack,
   modelUrl = '/models/model.glb',
   onReload,
-  videoFileName = null
+  videoFileName = null,
+  jobStatus = 'COMPLETED',
+  jobProgress = 100,
+  jobError = null
 }) {
   const [pointSize, setPointSize] = useState(0.03);
+  const isProcessing = jobStatus === 'PROCESSING';
+
+  // Base download path stripping cache query
+  const downloadHref = modelUrl ? modelUrl.split('?')[0] : '/models/model.glb';
 
   return (
     <div className="viewer-page-container">
@@ -42,36 +51,45 @@ export default function ViewerPage({
           <div className="viewer-title-group">
             <h2 className="viewer-main-title">
               <Box size={18} className="text-cyan-400" />
-              <span>DUSt3R 3D Spatial Twin Inspector</span>
+              <span>Geo3D Vision • 3D Spatial Inspector</span>
             </h2>
             <p className="viewer-subtitle">
-              {videoFileName ? `Source: ${videoFileName}` : 'Active Asset: public/models/model.glb'}
+              {videoFileName ? `Source: ${videoFileName}` : `Active Asset: ${downloadHref}`}
             </p>
           </div>
         </div>
 
         <div className="viewer-topbar-right">
-          {onReload && (
-            <button
-              type="button"
-              className="btn-viewer-action secondary"
-              onClick={onReload}
-              title="Reload model from disk"
-            >
-              <RotateCcw size={15} />
-              <span>Reload 3D Asset</span>
-            </button>
-          )}
+          {isProcessing ? (
+            <div className="hud-badge" style={{ padding: '8px 16px', background: 'rgba(37, 99, 235, 0.2)' }}>
+              <RefreshCw size={14} className="spin-anim" />
+              <span>Pipeline Running ({jobProgress}%)...</span>
+            </div>
+          ) : (
+            <>
+              {onReload && (
+                <button
+                  type="button"
+                  className="btn-viewer-action secondary"
+                  onClick={onReload}
+                  title="Reload model from disk"
+                >
+                  <RotateCcw size={15} />
+                  <span>Reload 3D Asset</span>
+                </button>
+              )}
 
-          <a
-            href="/models/model.glb"
-            download="reconstructed_model.glb"
-            className="btn-viewer-action primary"
-            title="Download GLB for Three.js / Cesium / Blender"
-          >
-            <Download size={15} />
-            <span>Download GLB</span>
-          </a>
+              <a
+                href={downloadHref}
+                download="reconstructed_model.glb"
+                className="btn-viewer-action primary"
+                title="Download GLB for Three.js / Cesium / Blender"
+              >
+                <Download size={15} />
+                <span>Download GLB</span>
+              </a>
+            </>
+          )}
         </div>
       </header>
 
@@ -86,7 +104,7 @@ export default function ViewerPage({
           <div className="meta-stats-list">
             <div className="stat-item">
               <span className="cyan-dot"></span>
-              <span>Pipeline: <strong>DUSt3R Multi-View Dense</strong></span>
+              <span>Pipeline: <strong>DUSt3R + 3DGS Master</strong></span>
             </div>
             <div className="stat-item">
               <span>Format: <strong>GLTF / GLB Point Cloud</strong></span>
@@ -95,13 +113,27 @@ export default function ViewerPage({
               <span>Renderer: <strong>WebGL • Three.js Points</strong></span>
             </div>
             <div className="stat-item">
-              <span>Confidence Threshold: <strong>3.0+</strong></span>
+              <span>Status: <strong style={{ color: jobStatus === 'FAILED' ? '#f87171' : '#38bdf8' }}>{jobStatus}</strong></span>
             </div>
           </div>
 
           <div className="stat-item">
-            <CheckCircle2 size={15} style={{ color: '#10b981' }} />
-            <span>Point Cloud Loaded & Georeferenced</span>
+            {jobStatus === 'FAILED' ? (
+              <span style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <AlertTriangle size={15} />
+                <span>Reconstruction encountered an error</span>
+              </span>
+            ) : isProcessing ? (
+              <span style={{ color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <RefreshCw size={14} className="spin-anim" />
+                <span>Python pipeline executing ({jobProgress}%)...</span>
+              </span>
+            ) : (
+              <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={15} />
+                <span>3D Point Cloud Generated & Georeferenced</span>
+              </span>
+            )}
           </div>
         </div>
       </main>

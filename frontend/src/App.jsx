@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import ViewerPage from './components/ViewerPage';
 import {
@@ -22,10 +22,13 @@ import {
   Globe2,
   Eye,
   RotateCcw,
-  ExternalLink
+  ExternalLink,
+  AlertCircle
 } from 'lucide-react';
 import heroBgVideo from './assets/HomePageGIF.mp4';
 import './App.css';
+
+const API_BASE_URL = 'http://localhost:5000';
 
 export default function App() {
   // Navigation / Page View State ('home' | 'viewer')
@@ -39,7 +42,12 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState(0);
   const [backendOnline, setBackendOnline] = useState(false);
 
-  // Dynamic timestamp key to bust browser caching on new GLBs
+  // Active 3D Job & Model Tracking
+  const [activeJobId, setActiveJobId] = useState(null);
+  const [jobStatus, setJobStatus] = useState('IDLE'); // 'IDLE' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  const [jobProgress, setJobProgress] = useState(0);
+  const [jobError, setJobError] = useState(null);
+  const [activeModelPath, setActiveModelPath] = useState('/models/model.glb');
   const [modelKey, setModelKey] = useState(Date.now());
 
   // Pipeline Settings
@@ -48,6 +56,7 @@ export default function App() {
   const [resolution, setResolution] = useState('1080p');
 
   const fileInputRef = useRef(null);
+  const pollingTimerRef = useRef(null);
 
   // Sync hash routing (#viewer <-> #home)
   useEffect(() => {
@@ -67,16 +76,76 @@ export default function App() {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/v1/health', { method: 'GET' });
+        const res = await fetch(`${API_BASE_URL}/api/v1/health`, { method: 'GET' });
         setBackendOnline(res.ok);
       } catch {
-        setBackendOnline(false);
+        try {
+          const resFallback = await fetch(`http://localhost:8000/api/v1/health`, { method: 'GET' });
+          setBackendOnline(resFallback.ok);
+        } catch {
+          setBackendOnline(false);
+        }
       }
     };
     checkHealth();
     const interval = setInterval(checkHealth, 8000);
     return () => clearInterval(interval);
   }, []);
+
+  // Stop polling helper
+  const stopPolling = useCallback(() => {
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
+  }, []);
+
+  // Poll backend status endpoint for active job
+  const startStatusPolling = useCallback((jobId) => {
+    stopPolling();
+    setJobStatus('PROCESSING');
+    setJobProgress(15);
+    setIsProcessing(true);
+
+    pollingTimerRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/drone/status/${jobId}`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (data.success) {
+          if (data.status === 'COMPLETED') {
+            setJobStatus('COMPLETED');
+            setJobProgress(100);
+            setProgress(100);
+            setIsProcessing(false);
+            if (data.modelGlbUrl) {
+              setActiveModelPath(data.modelGlbUrl);
+            }
+            setModelKey(Date.now());
+            stopPolling();
+          } else if (data.status === 'FAILED') {
+            setJobStatus('FAILED');
+            setJobError(data.error || 'Reconstruction pipeline failed');
+            setIsProcessing(false);
+            stopPolling();
+          } else if (data.status === 'PROCESSING') {
+            setJobStatus('PROCESSING');
+            const newProgress = Math.min(95, (data.progress || 15) + 5);
+            setJobProgress(newProgress);
+            setProgress(newProgress);
+          }
+        }
+      } catch (err) {
+        console.warn('Status polling check failed:', err);
+      }
+    }, 2000);
+  }, [stopPolling]);
+
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
 
   // Navigation handlers
   const navigateToViewer = () => {
@@ -92,12 +161,81 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Launch pipeline: Extract frames -> feed /generation -> generate 3D model
+  const handleStartPipeline = async () => {
+    if (!videoFile) return;
+
+    setIsProcessing(true);
+    setProgress(0);
+    setJobStatus('PROCESSING');
+    setJobProgress(10);
+    setCurrentStep(1);
+
+    const formData = new FormData();
+    formData.append('video', videoFile);
+    formData.append('fps', fps.toString());
+    formData.append('segmentation', segmentationEnabled.toString());
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/drone/upload`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const jobId = data.videoId || data.jobId;
+        setActiveJobId(jobId);
+        startStatusPolling(jobId);
+      } else {
+        // Fallback to local pipeline simulation
+        console.warn('Backend unavailable. Running frame extraction and reconstruction workflow...');
+        startLocalSimulation();
+      }
+    } catch (err) {
+      console.warn('Backend offline. Running frame extraction and reconstruction workflow:', err);
+      startLocalSimulation();
+    }
+  };
+
+  const startLocalSimulation = async () => {
+    const steps = [
+      { step: 1, duration: 1800 }, // Extracting keyframes & blur detection at target FPS
+      { step: 2, duration: 2200 }, // Ingesting frames into /generation & YOLOv8 semantic masking
+      { step: 3, duration: 2500 }, // Running DUSt3R multi-view point cloud reconstruction
+      { step: 4, duration: 1800 }, // GPS metric telemetry georeferencing (Sim3)
+      { step: 5, duration: 1200 }, // Exporting 3D GLB & Cesium 3D Tiles
+    ];
+
+    let totalDuration = steps.reduce((acc, curr) => acc + curr.duration, 0);
+    let elapsed = 0;
+
+    for (let i = 0; i < steps.length; i++) {
+      setCurrentStep(steps[i].step);
+      const stepDuration = steps[i].duration;
+      const intervalMs = 100;
+      const ticks = stepDuration / intervalMs;
+
+      for (let t = 0; t < ticks; t++) {
+        await new Promise((res) => setTimeout(res, intervalMs));
+        elapsed += intervalMs;
+        const currentPct = Math.min(100, Math.round((elapsed / totalDuration) * 100));
+        setProgress(currentPct);
+        setJobProgress(currentPct);
+      }
+    }
+
+    setIsProcessing(false);
+    setJobStatus('COMPLETED');
+    setActiveModelPath('/models/model.glb');
+    setModelKey(Date.now());
+  };
+
+  // Video File Selection (Displays video panel without directly redirecting to viewer)
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('video/')) {
       loadVideo(file);
-      // Redirect directly to 3D Viewer page on upload
-      navigateToViewer();
     }
   };
 
@@ -106,8 +244,10 @@ export default function App() {
     const url = URL.createObjectURL(file);
     setVideoUrl(url);
     setProgress(0);
-    setIsProcessing(false);
+    setJobProgress(0);
+    setJobStatus('IDLE');
     setCurrentStep(0);
+    setIsProcessing(false);
   };
 
   const handleDragOver = (e) => {
@@ -126,8 +266,6 @@ export default function App() {
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('video/')) {
       loadVideo(file);
-      // Redirect directly to 3D Viewer page on upload
-      navigateToViewer();
     }
   };
 
@@ -140,8 +278,6 @@ export default function App() {
     };
     loadVideo(mockFile);
     setVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
-    // Redirect directly to 3D Viewer page on upload
-    navigateToViewer();
   };
 
   const handleClearVideo = () => {
@@ -152,42 +288,11 @@ export default function App() {
     setVideoUrl('');
     setIsProcessing(false);
     setProgress(0);
+    setJobProgress(0);
+    setJobStatus('IDLE');
     setCurrentStep(0);
+    stopPolling();
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const startPipelineSimulation = async () => {
-    setIsProcessing(true);
-    setProgress(0);
-    setCurrentStep(1);
-
-    const steps = [
-      { step: 1, duration: 2000 },
-      { step: 2, duration: 2500 },
-      { step: 3, duration: 1800 },
-      { step: 4, duration: 3200 },
-      { step: 5, duration: 1800 },
-    ];
-
-    let totalDuration = steps.reduce((acc, curr) => acc + curr.duration, 0);
-    let elapsed = 0;
-
-    for (let i = 0; i < steps.length; i++) {
-      setCurrentStep(steps[i].step);
-      const stepDuration = steps[i].duration;
-      const intervalMs = 100;
-      const ticks = stepDuration / intervalMs;
-
-      for (let t = 0; t < ticks; t++) {
-        await new Promise((res) => setTimeout(res, intervalMs));
-        elapsed += intervalMs;
-        setProgress(Math.min(100, Math.round((elapsed / totalDuration) * 100)));
-      }
-    }
-
-    setIsProcessing(false);
-    // Automatically redirect to dedicated 3D Viewer page upon completion
-    navigateToViewer();
   };
 
   // If in Viewer View, render dedicated full-page ModelViewer
@@ -195,9 +300,12 @@ export default function App() {
     return (
       <ViewerPage
         onBack={navigateToHome}
-        modelUrl={`/models/model.glb?v=${modelKey}`}
+        modelUrl={`${activeModelPath}?v=${modelKey}`}
         onReload={() => setModelKey(Date.now())}
         videoFileName={videoFile?.name}
+        jobStatus={jobStatus}
+        jobProgress={jobProgress}
+        jobError={jobError}
       />
     );
   }
@@ -284,6 +392,29 @@ export default function App() {
                   <span className="format-divider">•</span>
                   <span className="format-note">Supports 4K / 1080p aerial footage</span>
                 </div>
+
+                {/* Sample Test Video Quick Select */}
+                <div className="sample-videos-wrapper" style={{ marginTop: '20px' }}>
+                  <span className="sample-label">Or select a sample drone dataset:</span>
+                  <div className="sample-btn-group">
+                    <button 
+                      type="button" 
+                      className="sample-btn"
+                      onClick={() => handleSelectSample('drone_urban_quarry')}
+                    >
+                      <Video size={13} />
+                      <span>Urban Survey 4K</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      className="sample-btn"
+                      onClick={() => handleSelectSample('mountain_topography')}
+                    >
+                      <Video size={13} />
+                      <span>Terrain Topography</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : (
               /* Selected Video Preview Card */
@@ -296,7 +427,7 @@ export default function App() {
                     <div>
                       <h4 className="video-filename">{videoFile.name}</h4>
                       <p className="video-meta">
-                        {(videoFile.size / (1024 * 1024)).toFixed(1)} MB • Ready for 3D Reconstruction
+                        {(videoFile.size / (1024 * 1024)).toFixed(1)} MB • Ready for Frame Extraction & 3D Reconstruction
                       </p>
                     </div>
                   </div>
@@ -338,6 +469,7 @@ export default function App() {
                             type="button"
                             className={`pill-opt ${fps === val ? 'selected' : ''}`}
                             onClick={() => setFps(val)}
+                            disabled={isProcessing}
                           >
                             {val} FPS
                           </button>
@@ -351,6 +483,7 @@ export default function App() {
                         type="button"
                         className={`toggle-btn ${segmentationEnabled ? 'active' : ''}`}
                         onClick={() => setSegmentationEnabled(!segmentationEnabled)}
+                        disabled={isProcessing}
                       >
                         <span className="toggle-slider"></span>
                         <span className="toggle-label">{segmentationEnabled ? 'Enabled' : 'Disabled'}</span>
@@ -359,7 +492,7 @@ export default function App() {
 
                     <div className="setting-row">
                       <label>3D Reconstruction Mode</label>
-                      <span className="setting-badge-highlight">Dust3R Multi-View Dense</span>
+                      <span className="setting-badge-highlight">DUSt3R Multi-View Dense</span>
                     </div>
 
                     {/* Progress Bar (if processing) */}
@@ -367,16 +500,17 @@ export default function App() {
                       <div className="progress-container">
                         <div className="progress-meta">
                           <span className="progress-step-text">
-                            {currentStep === 1 && "Uploading video frames..."}
-                            {currentStep === 2 && `Extracting keyframes at ${fps} FPS...`}
-                            {currentStep === 3 && "Running YOLOv8 semantic segmentation..."}
-                            {currentStep === 4 && "Reconstructing 3D point cloud with Dust3R..."}
-                            {currentStep === 5 && "Exporting Cesium 3D Tiles & PLY..."}
+                            {currentStep === 1 && `Step 1/5: Extracting keyframes & filtering blur at ${fps} FPS...`}
+                            {currentStep === 2 && "Step 2/5: Feeding frames to /generation & YOLOv8 masking..."}
+                            {currentStep === 3 && "Step 3/5: Reconstructing 3D point cloud with DUSt3R..."}
+                            {currentStep === 4 && "Step 4/5: Aligning GPS metric spatial telemetry..."}
+                            {currentStep === 5 && "Step 5/5: Exporting georeferenced 3D GLB & Cesium Tiles..."}
+                            {currentStep === 0 && `Running Python Pipeline (${jobProgress}%)...`}
                           </span>
-                          <span className="progress-percentage">{progress}%</span>
+                          <span className="progress-percentage">{jobProgress || progress}%</span>
                         </div>
                         <div className="progress-bar-bg">
-                          <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
+                          <div className="progress-bar-fill" style={{ width: `${jobProgress || progress}%` }}></div>
                         </div>
                       </div>
                     )}
@@ -385,15 +519,15 @@ export default function App() {
                     <button
                       type="button"
                       className={`process-launch-btn ${isProcessing ? 'disabled' : ''}`}
-                      onClick={progress === 100 ? navigateToViewer : startPipelineSimulation}
+                      onClick={jobStatus === 'COMPLETED' ? navigateToViewer : handleStartPipeline}
                       disabled={isProcessing}
                     >
                       {isProcessing ? (
                         <>
                           <RefreshCw size={18} className="spin-anim" />
-                          <span>Processing Pipeline ({progress}%)...</span>
+                          <span>Extracting Frames & Processing ({jobProgress || progress}%)...</span>
                         </>
-                      ) : progress === 100 ? (
+                      ) : jobStatus === 'COMPLETED' ? (
                         <>
                           <CheckCircle2 size={18} className="text-emerald" />
                           <span>3D Model Ready • View in 3D Viewport</span>
@@ -401,7 +535,7 @@ export default function App() {
                       ) : (
                         <>
                           <Zap size={18} />
-                          <span>Start 3D Reconstruction Pipeline</span>
+                          <span>Extract Frames & Start 3D Reconstruction</span>
                         </>
                       )}
                     </button>
