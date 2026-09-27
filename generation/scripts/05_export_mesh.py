@@ -110,8 +110,15 @@ def export_obj_mesh(points: np.ndarray, colors: np.ndarray, output_path: Path, d
         try:
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(points.astype(np.float64))
+            pcdPointLengthLimit = 500000
             if len(colors) == len(points):
                 pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64) / 255.0)
+
+            # Downsample if too large to avoid memory/time explosion in Poisson
+            if len(pcd.points) > pcdPointLengthLimit:
+                sampling_ratio = 500000 / len(pcd.points)
+                pcd = pcd.random_down_sample(sampling_ratio)
+                logger.info(f"Downsampled to {len(pcd.points)} points for Poisson reconstruction")
 
             pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=1.5, max_nn=30))
             pcd.orient_normals_consistent_tangent_plane(10)
@@ -274,7 +281,16 @@ def run_export_pipeline(
         try:
             import trimesh
             glb_path = out_p / "model.glb"
-            pcd = trimesh.PointCloud(vertices=points, colors=colors)
+            
+            # Downsample for web viewer to prevent browser OOM/crash
+            web_points, web_colors = points, colors
+            if len(points) > 500000:
+                indices = np.random.choice(len(points), 500000, replace=False)
+                web_points = points[indices]
+                web_colors = colors[indices]
+                logger.info(f"Downsampled GLB point cloud to 500,000 points for web viewing.")
+                
+            pcd = trimesh.PointCloud(vertices=web_points, colors=web_colors)
             pcd.export(str(glb_path))
             exported_files["glb"] = str(glb_path.resolve())
             logger.info(f"Exported Three.js/WebGL GLB model -> {glb_path.name}")

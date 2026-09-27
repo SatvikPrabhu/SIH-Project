@@ -42,7 +42,6 @@ app.use("/api/drone-videos", droneVideoRoutes);
 
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/geo3d_drone_db";
-
 mongoose.connect(MONGO_URI)
     .then(() => {
         console.log("MongoDB connected successfully");
