@@ -13,13 +13,14 @@ import {
   Compass,
   Camera,
   Box,
+  Cpu,
   Zap,
   RefreshCw,
   Sliders,
   ChevronRight,
   Database,
   Globe2,
-  Box,
+  Eye,
   RotateCcw
 } from 'lucide-react';
 import heroBgVideo from './assets/HomePageGIF.mp4';
@@ -177,6 +178,7 @@ export default function App() {
         {/* 3D Google Earth Background Video Loop */}
         <div className="hero-video-bg-container">
           <video
+            className="hero-bg-video"
             autoPlay
             loop
             muted
@@ -373,51 +375,6 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-
-                {/* Progress & Stepper (if processing) */}
-                {isProcessing && (
-                  <div className="pipeline-progress-box">
-                    <div className="progress-info-row">
-                      <span className="step-name-text">
-                        {currentStep === 1 && "Step 1/5: Extracting keyframes & filtering blur..."}
-                        {currentStep === 2 && "Step 2/5: Estimating camera poses (SfM)..."}
-                        {currentStep === 3 && "Step 3/5: Aligning with GPS coordinates (Sim3)..."}
-                        {currentStep === 4 && "Step 4/5: Training 3D Gaussian Splats..."}
-                        {currentStep === 5 && "Step 5/5: Exporting 3D Mesh & Cesium Tiles..."}
-                      </span>
-                      <span className="progress-percent font-mono">{progress}%</span>
-                    </div>
-                    <div className="progress-track">
-                      <div className="progress-fill" style={{ width: `${progress}%` }}></div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Process Action Button */}
-                <button
-                  type="button"
-                  className={`start-pipeline-btn ${isProcessing ? 'disabled' : ''}`}
-                  onClick={startReconstruction}
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? (
-                    <>
-                      <RefreshCw size={18} className="spin-icon" />
-                      <span>Reconstructing 3D Model ({progress}%)...</span>
-                    </>
-                  ) : progress === 100 ? (
-                    <>
-                      <CheckCircle2 size={18} className="text-emerald" />
-                      <span>3D Model Ready • Download Assets Below</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap size={18} />
-                      <span>Process Video & Reconstruct in 3D</span>
-                      <ChevronRight size={18} />
-                    </>
-                  )}
-                </button>
               </div>
             )}
           </div>

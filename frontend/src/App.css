@@ -3,11 +3,11 @@
      HERO BACKGROUND VIDEO CONTROLS
      Tweak these variables to adjust zoom, positioning, and visibility!
      ========================================================================== */
-  --hero-video-zoom: 1.3;
+  --hero-video-zoom: 1.28;
   /* Zoom level (e.g., 1.0 = normal, 1.1 = slight zoom, 1.25 = close up) */
-  --hero-video-shift-y: -5%;
-  /* Vertical shift (e.g., -5% = shifted upwards, 0% = centered) */
-  --hero-video-opacity: 0.75;
+  --hero-video-shift-y: -22%;
+  /* Vertical shift (e.g., -22% = shifted upwards, 0% = centered) */
+  --hero-video-opacity: 0.85;
   /* Video opacity: 0.0 (invisible) to 1.0 (full solid) */
 }
 
@@ -80,8 +80,8 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 15%;
-  transform: translateY(var(--hero-video-shift-y, -5%)) scale(var(--hero-video-zoom, 1.15));
+  object-position: center top;
+  transform: translateY(var(--hero-video-shift-y, -22%)) scale(var(--hero-video-zoom, 1.28));
   transform-origin: center center;
   opacity: var(--hero-video-opacity, 0.85);
   filter: saturate(1.15) brightness(1.0) contrast(1.02);
