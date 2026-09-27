@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Navbar from './components/Navbar';
-import ModelViewer from './components/ModelViewer';
+import ViewerPage from './components/ViewerPage';
 import {
   Upload,
   FileVideo,
@@ -21,13 +21,16 @@ import {
   Database,
   Globe2,
   Eye,
-  RotateCcw
+  RotateCcw,
+  ExternalLink
 } from 'lucide-react';
 import heroBgVideo from './assets/HomePageGIF.mp4';
 import './App.css';
 
-
 export default function App() {
+  // Navigation / Page View State ('home' | 'viewer')
+  const [currentView, setCurrentView] = useState('home');
+
   const [videoFile, setVideoFile] = useState(null);
   const [videoUrl, setVideoUrl] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -36,8 +39,7 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState(0);
   const [backendOnline, setBackendOnline] = useState(false);
 
-  // 3D Model Viewer State & Cache-Busting Key
-  const [showViewer, setShowViewer] = useState(false);
+  // Dynamic timestamp key to bust browser caching on new GLBs
   const [modelKey, setModelKey] = useState(Date.now());
 
   // Pipeline Settings
@@ -46,6 +48,20 @@ export default function App() {
   const [resolution, setResolution] = useState('1080p');
 
   const fileInputRef = useRef(null);
+
+  // Sync hash routing (#viewer <-> #home)
+  useEffect(() => {
+    const handleHashChange = () => {
+      if (window.location.hash === '#viewer') {
+        setCurrentView('viewer');
+      } else {
+        setCurrentView('home');
+      }
+    };
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // Check backend health
   useEffect(() => {
@@ -62,10 +78,26 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Navigation handlers
+  const navigateToViewer = () => {
+    setModelKey(Date.now());
+    window.location.hash = '#viewer';
+    setCurrentView('viewer');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const navigateToHome = () => {
+    window.location.hash = '#home';
+    setCurrentView('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('video/')) {
       loadVideo(file);
+      // Redirect directly to 3D Viewer page on upload
+      navigateToViewer();
     }
   };
 
@@ -94,6 +126,8 @@ export default function App() {
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('video/')) {
       loadVideo(file);
+      // Redirect directly to 3D Viewer page on upload
+      navigateToViewer();
     }
   };
 
@@ -104,11 +138,10 @@ export default function App() {
       type: 'video/mp4',
       lastModified: Date.now()
     };
-    setVideoFile(mockFile);
+    loadVideo(mockFile);
     setVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
-    setProgress(0);
-    setIsProcessing(false);
-    setCurrentStep(0);
+    // Redirect directly to 3D Viewer page on upload
+    navigateToViewer();
   };
 
   const handleClearVideo = () => {
@@ -123,27 +156,17 @@ export default function App() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Toggle or reload 3D Model Viewer with timestamp cache-buster
-  const handleToggleViewer = () => {
-    setShowViewer(true);
-    setModelKey(Date.now());
-  };
-
-  const handleCloseViewer = () => {
-    setShowViewer(false);
-  };
-
   const startPipelineSimulation = async () => {
     setIsProcessing(true);
     setProgress(0);
     setCurrentStep(1);
 
     const steps = [
-      { step: 1, duration: 2000 }, // Keyframe & Blur Filtering
-      { step: 2, duration: 2500 }, // Structure from Motion (SfM)
-      { step: 3, duration: 1800 }, // GPS Georeferencing (Sim3)
-      { step: 4, duration: 3200 }, // 3D Gaussian Splatting Training
-      { step: 5, duration: 1800 }, // Multi-Format Export
+      { step: 1, duration: 2000 },
+      { step: 2, duration: 2500 },
+      { step: 3, duration: 1800 },
+      { step: 4, duration: 3200 },
+      { step: 5, duration: 1800 },
     ];
 
     let totalDuration = steps.reduce((acc, curr) => acc + curr.duration, 0);
@@ -163,11 +186,23 @@ export default function App() {
     }
 
     setIsProcessing(false);
-    // Automatically reveal the 3D Viewer upon pipeline completion
-    setShowViewer(true);
-    setModelKey(Date.now());
+    // Automatically redirect to dedicated 3D Viewer page upon completion
+    navigateToViewer();
   };
 
+  // If in Viewer View, render dedicated full-page ModelViewer
+  if (currentView === 'viewer') {
+    return (
+      <ViewerPage
+        onBack={navigateToHome}
+        modelUrl={`/models/model.glb?v=${modelKey}`}
+        onReload={() => setModelKey(Date.now())}
+        videoFileName={videoFile?.name}
+      />
+    );
+  }
+
+  // Otherwise, render the Main Landing & Upload Page
   return (
     <div className="app-container" id="home">
       {/* 1. Simple Navbar */}
@@ -196,13 +231,11 @@ export default function App() {
         <div className="hero-content">
           {/* Semi-transparent Glass Card for Hero Heading */}
           <div className="hero-text-card">
-            {/* Placeholder Title in the Center */}
             <h1 className="hero-title">
               Transform Aerial Drone Videos into <br />
               <span className="text-gradient">Interactive 3D Geospatial Twins</span>
             </h1>
 
-            {/* Center Subtitle */}
             <p className="hero-subtitle">
               Upload multi-view drone footage to automatically extract motion-aware keyframes,
               segment semantic terrain with YOLOv8, and reconstruct dense 3D point clouds with Dust3R.
@@ -211,7 +244,6 @@ export default function App() {
 
           {/* Upload Area / Big Upload Video Button */}
           <div className="upload-container" id="upload-section">
-            {/* Hidden File Input */}
             <input
               type="file"
               ref={fileInputRef}
@@ -353,7 +385,7 @@ export default function App() {
                     <button
                       type="button"
                       className={`process-launch-btn ${isProcessing ? 'disabled' : ''}`}
-                      onClick={progress === 100 ? handleToggleViewer : startPipelineSimulation}
+                      onClick={progress === 100 ? navigateToViewer : startPipelineSimulation}
                       disabled={isProcessing}
                     >
                       {isProcessing ? (
@@ -379,9 +411,8 @@ export default function App() {
             )}
           </div>
 
-          {/* 3D Model Inspection & Viewport Controller Section */}
+          {/* Dedicated 3D Model Inspection Launch Banner for Testers */}
           <section className="inspection-section" id="model-inspection">
-            {/* Top Action Bar */}
             <div className="inspection-header-bar">
               <div className="inspection-title-group">
                 <div className="inspection-icon-badge">
@@ -392,7 +423,7 @@ export default function App() {
                     3D Spatial Reconstruction Inspector
                   </h3>
                   <p className="inspection-subheading">
-                    Real-time WebGL/Three.js rendering for DUSt3R point clouds and exported GLBs
+                    Inspect generated point cloud model (<code>public/models/model.glb</code>) in full-screen WebGL viewport
                   </p>
                 </div>
               </div>
@@ -400,57 +431,16 @@ export default function App() {
               <div className="inspection-actions-group">
                 <button
                   type="button"
-                  className={`btn-view-model ${showViewer ? 'active-reload' : ''}`}
-                  onClick={handleToggleViewer}
+                  className="btn-view-model"
+                  onClick={navigateToViewer}
+                  title="Launch full page 3D Model Inspector"
                 >
-                  {showViewer ? (
-                    <>
-                      <RotateCcw size={16} />
-                      <span>Reload / View Reconstruction</span>
-                    </>
-                  ) : (
-                    <>
-                      <Eye size={16} />
-                      <span>View Generated Model</span>
-                    </>
-                  )}
+                  <Eye size={16} />
+                  <span>View Generated Model</span>
+                  <ExternalLink size={14} style={{ opacity: 0.8 }} />
                 </button>
               </div>
             </div>
-
-            {/* Viewer Active or Empty State Placeholder */}
-            {showViewer ? (
-              <div className="viewer-active-wrapper">
-                <button
-                  type="button"
-                  className="btn-close-viewport"
-                  onClick={handleCloseViewer}
-                  title="Close 3D Viewport"
-                >
-                  <X size={14} />
-                  <span>Close Viewport ✕</span>
-                </button>
-                <ModelViewer modelUrl={`/models/model.glb?v=${modelKey}`} />
-              </div>
-            ) : (
-              <div className="viewer-empty-state-card">
-                <div className="empty-state-icon">
-                  <Layers size={26} />
-                </div>
-                <h4 className="empty-state-title">No Active 3D Session Open</h4>
-                <p className="empty-state-desc">
-                  Click <strong>"View Generated Model"</strong> above to inspect <code>public/models/model.glb</code> or trigger a reconstruction pipeline.
-                </p>
-                <button
-                  type="button"
-                  className="btn-view-model"
-                  onClick={handleToggleViewer}
-                >
-                  <Eye size={15} />
-                  <span>View Generated Model</span>
-                </button>
-              </div>
-            )}
           </section>
 
           {/* Quick Metrics & Feature Highlights */}
@@ -501,9 +491,7 @@ export default function App() {
             </p>
           </div>
 
-          {/* 5-Step Workflow Cards Grid */}
           <div className="steps-grid" id="pipeline">
-            {/* Step 1 */}
             <div className="workflow-card">
               <div className="step-number-tag">01</div>
               <div className="workflow-icon-box cyan">
@@ -515,7 +503,6 @@ export default function App() {
               </p>
             </div>
 
-            {/* Step 2 */}
             <div className="workflow-card">
               <div className="step-number-tag">02</div>
               <div className="workflow-icon-box emerald">
@@ -527,7 +514,6 @@ export default function App() {
               </p>
             </div>
 
-            {/* Step 3 */}
             <div className="workflow-card">
               <div className="step-number-tag">03</div>
               <div className="workflow-icon-box purple">
@@ -539,7 +525,6 @@ export default function App() {
               </p>
             </div>
 
-            {/* Step 4 */}
             <div className="workflow-card">
               <div className="step-number-tag">04</div>
               <div className="workflow-icon-box amber">
@@ -551,7 +536,6 @@ export default function App() {
               </p>
             </div>
 
-            {/* Step 5 */}
             <div className="workflow-card">
               <div className="step-number-tag">05</div>
               <div className="workflow-icon-box blue">
