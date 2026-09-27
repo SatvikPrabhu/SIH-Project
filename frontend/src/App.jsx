@@ -107,24 +107,34 @@ export default function App() {
     setJobProgress(15);
     setIsProcessing(true);
 
+    console.log(`%c[FRONTEND POLLING] 📡 Initiated status polling for Job ID: ${jobId}`, 'color: #38bdf8; font-weight: bold;');
+
     pollingTimerRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/drone/status/${jobId}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.warn(`[FRONTEND POLLING] ⚠️ Status check HTTP ${res.status}: ${res.statusText}`);
+          return;
+        }
 
         const data = await res.json();
+        console.log(`[FRONTEND POLLING] 📊 Job [${jobId}] Status:`, data.status, `| Progress: ${data.progress || 0}%`, data);
+
         if (data.success) {
           if (data.status === 'COMPLETED') {
+            console.log(`%c[FRONTEND POLLING] 🎉 3D Model reconstruction COMPLETED for Job [${jobId}]!`, 'color: #4ade80; font-weight: bold; font-size: 14px;');
+            if (data.modelGlbUrl) {
+              console.log(`%c[FRONTEND POLLING] 📥 Model file URL: ${data.modelGlbUrl}`, 'color: #38bdf8; font-weight: bold;');
+              setActiveModelPath(data.modelGlbUrl);
+            }
             setJobStatus('COMPLETED');
             setJobProgress(100);
             setProgress(100);
             setIsProcessing(false);
-            if (data.modelGlbUrl) {
-              setActiveModelPath(data.modelGlbUrl);
-            }
             setModelKey(Date.now());
             stopPolling();
           } else if (data.status === 'FAILED') {
+            console.error(`%c[FRONTEND POLLING] ❌ Pipeline job [${jobId}] FAILED: ${data.error}`, 'color: #f87171; font-weight: bold;');
             setJobStatus('FAILED');
             setJobError(data.error || 'Reconstruction pipeline failed');
             setIsProcessing(false);
@@ -137,7 +147,7 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.warn('Status polling check failed:', err);
+        console.warn('[FRONTEND POLLING] ⚠️ Status polling network error:', err);
       }
     }, 2000);
   }, [stopPolling]);
@@ -176,35 +186,52 @@ export default function App() {
     formData.append('fps', fps.toString());
     formData.append('segmentation', segmentationEnabled.toString());
 
+    console.log(`%c[FRONTEND UPLOAD] 🚀 Initiating file transfer to backend...`, 'color: #a855f7; font-weight: bold; font-size: 13px;');
+    console.log('[FRONTEND UPLOAD] 📦 Payload Info:', {
+      fileName: videoFile.name,
+      fileSize: `${(videoFile.size / (1024 * 1024)).toFixed(2)} MB (${videoFile.size} bytes)`,
+      fileType: videoFile.type,
+      targetEndpoint: `${API_BASE_URL}/api/drone/upload`,
+      samplingRateFps: fps,
+      segmentation: segmentationEnabled
+    });
+
     try {
       const res = await fetch(`${API_BASE_URL}/api/drone/upload`, {
         method: 'POST',
         body: formData
       });
 
+      console.log(`[FRONTEND UPLOAD] 📨 HTTP Response received: ${res.status} ${res.statusText}`);
+
       if (res.ok) {
         const data = await res.json();
         const jobId = data.videoId || data.jobId;
+        console.log(`%c[FRONTEND UPLOAD] ✅ File transfer SUCCESSFUL! Assigned Job ID: ${jobId}`, 'color: #4ade80; font-weight: bold; font-size: 13px;');
+        console.log('[FRONTEND UPLOAD] 📋 Server response data:', data);
+
         setActiveJobId(jobId);
         startStatusPolling(jobId);
       } else {
-        // Fallback to local pipeline simulation
-        console.warn('Backend unavailable. Running frame extraction and reconstruction workflow...');
+        const errorText = await res.text();
+        console.warn(`[FRONTEND UPLOAD] ❌ Server responded with error status ${res.status}:`, errorText);
+        console.warn('[FRONTEND UPLOAD] ⚠️ Running fallback frame extraction and reconstruction workflow...');
         startLocalSimulation();
       }
     } catch (err) {
-      console.warn('Backend offline. Running frame extraction and reconstruction workflow:', err);
+      console.warn(`[FRONTEND UPLOAD] ⚠️ Backend fetch failed (${err.message}). Starting client simulation workflow...`);
       startLocalSimulation();
     }
   };
 
   const startLocalSimulation = async () => {
+    console.log('%c[CLIENT SIMULATION] ⚡ Starting local simulation workflow', 'color: #eab308; font-weight: bold;');
     const steps = [
-      { step: 1, duration: 1800 }, // Extracting keyframes & blur detection at target FPS
-      { step: 2, duration: 2200 }, // Ingesting frames into /generation & YOLOv8 semantic masking
-      { step: 3, duration: 2500 }, // Running DUSt3R multi-view point cloud reconstruction
-      { step: 4, duration: 1800 }, // GPS metric telemetry georeferencing (Sim3)
-      { step: 5, duration: 1200 }, // Exporting 3D GLB & Cesium 3D Tiles
+      { step: 1, name: 'Extracting keyframes & blur detection', duration: 1800 },
+      { step: 2, name: 'YOLOv8 semantic terrain masking', duration: 2200 },
+      { step: 3, name: 'DUSt3R multi-view point cloud reconstruction', duration: 2500 },
+      { step: 4, name: 'GPS metric telemetry georeferencing (Sim3)', duration: 1800 },
+      { step: 5, name: 'Exporting 3D GLB & Cesium 3D Tiles', duration: 1200 },
     ];
 
     let totalDuration = steps.reduce((acc, curr) => acc + curr.duration, 0);
@@ -212,6 +239,7 @@ export default function App() {
 
     for (let i = 0; i < steps.length; i++) {
       setCurrentStep(steps[i].step);
+      console.log(`[CLIENT SIMULATION] ⏳ Step ${steps[i].step}/5: ${steps[i].name}...`);
       const stepDuration = steps[i].duration;
       const intervalMs = 100;
       const ticks = stepDuration / intervalMs;
@@ -225,6 +253,7 @@ export default function App() {
       }
     }
 
+    console.log('%c[CLIENT SIMULATION] ✅ Local simulation completed! Loading model...', 'color: #4ade80; font-weight: bold;');
     setIsProcessing(false);
     setJobStatus('COMPLETED');
     setActiveModelPath('/models/model.glb');
@@ -235,6 +264,7 @@ export default function App() {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('video/')) {
+      console.log(`%c[FILE SELECT] 📁 Video selected from file picker: "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB)`, 'color: #38bdf8;');
       loadVideo(file);
     }
   };
@@ -248,6 +278,7 @@ export default function App() {
     setJobStatus('IDLE');
     setCurrentStep(0);
     setIsProcessing(false);
+    console.log(`[FILE READY] 🎬 Video loaded for preview. Object URL created:`, url);
   };
 
   const handleDragOver = (e) => {
@@ -265,6 +296,7 @@ export default function App() {
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('video/')) {
+      console.log(`%c[FILE DROP] 📂 Video dropped: "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB)`, 'color: #38bdf8;');
       loadVideo(file);
     }
   };
@@ -276,11 +308,13 @@ export default function App() {
       type: 'video/mp4',
       lastModified: Date.now()
     };
+    console.log(`%c[SAMPLE SELECT] 🎯 Sample dataset selected: "${sampleName}"`, 'color: #38bdf8;');
     loadVideo(mockFile);
     setVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
   };
 
   const handleClearVideo = () => {
+    console.log('[FILE CLEAR] 🗑️ Cleared video selection');
     if (videoUrl && !videoUrl.startsWith('http')) {
       URL.revokeObjectURL(videoUrl);
     }

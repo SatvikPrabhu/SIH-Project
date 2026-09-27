@@ -13,6 +13,7 @@ function Dust3RModel({ modelUrl, pointSize = 0.03 }) {
 
   useLayoutEffect(() => {
     if (!scene) return;
+    console.log(`%c[THREE.JS VIEWER] 🌐 3D GLB model loaded successfully into WebGL viewport: ${modelUrl}`, 'color: #06b6d4; font-weight: bold;');
 
     scene.traverse((child) => {
       // DUSt3R exports point cloud primitives (THREE.Points) inside the GLB
@@ -28,7 +29,7 @@ function Dust3RModel({ modelUrl, pointSize = 0.03 }) {
         }
       }
     });
-  }, [scene, pointSize]);
+  }, [scene, pointSize, modelUrl]);
 
   return <primitive object={scene} />;
 }
