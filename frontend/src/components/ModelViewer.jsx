@@ -1,19 +1,19 @@
-import React, { Suspense, useLayoutEffect } from 'react';
+import React, { Suspense, useLayoutEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Stage, Center, Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { Layers, MousePointer, ZoomIn, Move } from 'lucide-react';
+import { Layers, MousePointer, ZoomIn, Move, FlipVertical, RotateCw, RotateCcw } from 'lucide-react';
 import './ModelViewer.css';
 
 /**
  * Inner component to load, configure, and render DUSt3R point cloud / mesh data
  */
-function Dust3RModel({ modelUrl, pointSize = 0.03 }) {
+function Dust3RModel({ modelUrl, pointSize = 0.03, rotation = [Math.PI, 0, 0] }) {
   const { scene } = useGLTF(modelUrl);
 
   useLayoutEffect(() => {
     if (!scene) return;
-    console.log(`%c[THREE.JS VIEWER] 🌐 3D GLB model loaded successfully into WebGL viewport: ${modelUrl}`, 'color: #06b6d4; font-weight: bold;');
+    console.log(`\n[MODEL VIEWER] 3D GLB model loaded successfully into WebGL viewport: ${modelUrl}\n`);
 
     scene.traverse((child) => {
       // DUSt3R exports point cloud primitives (THREE.Points) inside the GLB
@@ -31,7 +31,11 @@ function Dust3RModel({ modelUrl, pointSize = 0.03 }) {
     });
   }, [scene, pointSize, modelUrl]);
 
-  return <primitive object={scene} />;
+  return (
+    <group rotation={rotation}>
+      <primitive object={scene} />
+    </group>
+  );
 }
 
 /**
@@ -61,6 +65,23 @@ export default function ModelViewer({
   pointSize = 0.03,
   className = ''
 }) {
+  // OpenCV coordinate systems (DUSt3R) have Y pointing down, so flipping around X-axis (180°) renders the model upright in Three.js
+  const [isFlipped, setIsFlipped] = useState(true);
+  const [rotationY, setRotationY] = useState(0);
+
+  const handleToggleFlip = () => {
+    setIsFlipped((prev) => !prev);
+  };
+
+  const handleRotate90 = () => {
+    setRotationY((prev) => (prev + Math.PI / 2) % (Math.PI * 2));
+  };
+
+  const handleResetOrientation = () => {
+    setIsFlipped(true);
+    setRotationY(0);
+  };
+
   return (
     <div className={`model-viewer-wrapper ${className}`}>
       {/* Top-Left Navigation & Controls HUD */}
@@ -88,6 +109,41 @@ export default function ModelViewer({
         </div>
       </div>
 
+      {/* Top-Right Orientation & Flip Controls HUD */}
+      <div className="model-viewer-controls-hud">
+        <button
+          type="button"
+          className={`hud-control-btn ${isFlipped ? 'active' : ''}`}
+          onClick={handleToggleFlip}
+          title={isFlipped ? "Model is flipped upright (180°). Click to invert." : "Click to flip model upright (180°)"}
+        >
+          <FlipVertical size={14} />
+          <span>{isFlipped ? 'Flipped Upright (180°)' : 'Flip Upside Down'}</span>
+        </button>
+
+        <button
+          type="button"
+          className="hud-control-btn"
+          onClick={handleRotate90}
+          title="Rotate 90 degrees horizontally"
+        >
+          <RotateCw size={14} />
+          <span>Rotate 90°</span>
+        </button>
+
+        {(!isFlipped || rotationY !== 0) && (
+          <button
+            type="button"
+            className="hud-control-btn reset"
+            onClick={handleResetOrientation}
+            title="Reset model orientation"
+          >
+            <RotateCcw size={14} />
+            <span>Reset</span>
+          </button>
+        )}
+      </div>
+
       {/* Three.js Render Canvas */}
       <div className="model-canvas-container">
         <Canvas
@@ -109,7 +165,11 @@ export default function ModelViewer({
               shadows={false}
             >
               <Center>
-                <Dust3RModel modelUrl={modelUrl} pointSize={pointSize} />
+                <Dust3RModel
+                  modelUrl={modelUrl}
+                  pointSize={pointSize}
+                  rotation={[isFlipped ? Math.PI : 0, rotationY, 0]}
+                />
               </Center>
             </Stage>
           </Suspense>

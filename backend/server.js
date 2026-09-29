@@ -58,17 +58,17 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/geo3d_dron
 
 // Start Express server immediately so endpoints are always available
 app.listen(PORT, () => {
-    console.log(`\n=============================================================`);
-    console.log(`🚀 [BACKEND] Geo3D Server listening on http://localhost:${PORT}`);
-    console.log(`📡 [BACKEND] Upload endpoint: http://localhost:${PORT}/api/drone/upload`);
-    console.log(`=============================================================\n`);
+    console.log(`\n============================================================`);
+    console.log(`[BACKEND] Geo3D Server listening on http://localhost:${PORT}`);
+    console.log(`[BACKEND] Upload endpoint: http://localhost:${PORT}/api/drone/upload`);
+    console.log(`============================================================\n`);
 });
 
 // Attempt MongoDB connection non-blockingly
 mongoose.connect(MONGO_URI)
     .then(() => {
-        console.log("✅ [DATABASE] MongoDB connected successfully to:", MONGO_URI);
+        console.log(`[DATABASE] MongoDB connected successfully to: ${MONGO_URI}\n`);
     })
     .catch((error) => {
-        console.warn("⚠️ [DATABASE] MongoDB connection failed (server running in fallback in-memory mode):", error.message);
+        console.warn(`[DATABASE] MongoDB connection offline (running in fallback in-memory mode): ${error.message}\n`);
     });

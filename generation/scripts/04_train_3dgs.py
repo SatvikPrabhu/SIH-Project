@@ -164,12 +164,12 @@ def train_3dgs_pipeline(
     num_checkpoints = 0
 
     log_step = max(1, iterations // 10)
-    current_gaussians = len(init_points)
+    current_gaussians = min(len(init_points), 250000)
 
     for it in range(1, iterations + 1):
         # Emulate adaptive densification & cloning (every 500 iters up to 5000)
         if it % 500 == 0 and it < 5000:
-            current_gaussians = int(current_gaussians * 1.25)
+            current_gaussians = min(int(current_gaussians * 1.15), 300000)
 
         # Logging periodic status
         if it % log_step == 0 or it == iterations:
@@ -221,6 +221,11 @@ def save_3dgs_ply(file_path: Path, base_points: np.ndarray, current_count: int =
         random_indices = np.random.choice(len(base_points), size=extra_needed, replace=True)
         extra_pts = base_points[random_indices] + np.random.normal(0, 0.05, (extra_needed, 3)).astype(np.float32)
         pts = np.vstack([base_points, extra_pts]).astype(np.float32)
+
+    MAX_POINTS = 300000
+    if len(pts) > MAX_POINTS:
+        sample_idx = np.random.choice(len(pts), size=MAX_POINTS, replace=False)
+        pts = pts[sample_idx]
 
 
     n = len(pts)

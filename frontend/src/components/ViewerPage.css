@@ -229,3 +229,265 @@
     font-size: 12px;
   }
 }
+
+/* ==========================================================================
+   Dynamic Reconstruction Loading Screen & Progress Stepper
+   ========================================================================== */
+
+.reconstruction-loading-panel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 480px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, rgba(14, 28, 54, 0.7) 0%, rgba(6, 8, 15, 0.98) 80%);
+  overflow: hidden;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.reconstruction-glow-backdrop {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, rgba(99, 102, 241, 0.08) 45%, transparent 70%);
+  filter: blur(60px);
+  pointer-events: none;
+  animation: glow-pulse 6s ease-in-out infinite alternate;
+}
+
+@keyframes glow-pulse {
+  0% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.7; }
+  100% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+}
+
+.reconstruction-loader-card {
+  position: relative;
+  z-index: 10;
+  max-width: 680px;
+  width: 100%;
+  background: rgba(13, 19, 36, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 20px;
+  padding: 32px 36px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(56, 189, 248, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Status Pill Badge */
+.reconstruction-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 9999px;
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 16px;
+}
+
+.pulsing-radar-dot {
+  width: 8px;
+  height: 8px;
+  background: #38bdf8;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #38bdf8;
+  animation: pulse-dot 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* Active Stage Titles */
+.active-stage-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+  background: linear-gradient(135deg, #ffffff 30%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.active-stage-subtitle {
+  font-size: 13.5px;
+  color: #94a3b8;
+  margin: 0 0 28px;
+  line-height: 1.5;
+  max-width: 520px;
+}
+
+/* Animated Progress Bar */
+.stage-progress-container {
+  width: 100%;
+  margin-bottom: 28px;
+}
+
+.stage-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.stage-progress-label {
+  color: #cbd5e1;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+.stage-progress-percent {
+  color: #38bdf8;
+  font-family: var(--font-mono, monospace);
+  font-weight: 800;
+  font-size: 16px;
+  text-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+}
+
+.stage-progress-bar-bg {
+  width: 100%;
+  height: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.stage-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb 0%, #06b6d4 50%, #38bdf8 100%);
+  border-radius: 9999px;
+  transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.75);
+}
+
+.stage-progress-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%);
+  animation: bar-shimmer 2.2s infinite;
+}
+
+@keyframes bar-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Major Milestones Stepper */
+.pipeline-milestones-stepper {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.milestone-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 10px 6px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  opacity: 0.45;
+}
+
+.milestone-item.passed {
+  opacity: 0.9;
+  border-color: rgba(56, 189, 248, 0.25);
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.milestone-item.current {
+  opacity: 1;
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);
+  transform: translateY(-2px);
+}
+
+.milestone-icon-bubble {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  transition: all 0.3s ease;
+}
+
+.milestone-item.passed .milestone-icon-bubble {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.milestone-item.current .milestone-icon-bubble {
+  background: #38bdf8;
+  color: #06080f;
+  box-shadow: 0 0 10px #38bdf8;
+}
+
+.milestone-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #cbd5e1;
+  line-height: 1.25;
+}
+
+.milestone-item.current .milestone-name {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .reconstruction-loader-card {
+    padding: 24px 18px;
+  }
+
+  .active-stage-title {
+    font-size: 19px;
+  }
+
+  .pipeline-milestones-stepper {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .milestone-item {
+    flex-direction: row;
+    padding: 8px 12px;
+    text-align: left;
+  }
+}

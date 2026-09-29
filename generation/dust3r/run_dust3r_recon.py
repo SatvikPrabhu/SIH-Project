@@ -117,6 +117,12 @@ def run_dust3r(images_dir: str, output_dir: str, weights_path: str, image_size: 
     all_pts = np.vstack(valid_pts)
     all_colors = np.vstack(valid_colors)
 
+    # Convert from OpenCV camera coordinate convention (+X right, +Y down, +Z forward)
+    # to standard 3D world / GLTF / OpenGL coordinate convention (+X right, +Y up, +Z backward).
+    # This prevents the reconstructed terrain / mountains from being generated upside down.
+    all_pts[:, 1] = -all_pts[:, 1]
+    all_pts[:, 2] = -all_pts[:, 2]
+
     # Normalise colours to uint8 [0–255]
     if all_colors.max() <= 1.0:
         all_colors = (all_colors * 255).astype(np.uint8)

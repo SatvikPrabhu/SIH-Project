@@ -23,7 +23,7 @@ const FRONTEND_MODELS_DIR = path.join(PROJECT_ROOT, "frontend", "public", "model
 [STORAGE_INPUTS_DIR, STORAGE_OUTPUTS_DIR, FRONTEND_MODELS_DIR].forEach((dir) => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
-        console.log(`[STORAGE INIT] 📁 Created directory: ${dir}`);
+        console.log(`[STORAGE] Created directory: ${dir}\n`);
     }
 });
 
@@ -54,9 +54,33 @@ function getPythonExecutable() {
 }
 
 /**
+ * Helper to update progress percentage and current stage both in-memory and in MongoDB
+ */
+function updateJobMilestone(jobId, progress, stage) {
+    if (inMemoryJobs.has(jobId)) {
+        const memJob = inMemoryJobs.get(jobId);
+        if (progress > (memJob.progress || 0)) {
+            memJob.progress = progress;
+        }
+        if (stage) {
+            memJob.stage = stage;
+        }
+    }
+
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(jobId)) {
+        DroneVideo.findByIdAndUpdate(jobId, {
+            $max: { progress: progress },
+            ...(stage ? { stage: stage } : {})
+        }).catch((err) => {
+            console.warn(`[DATABASE] Failed to update progress for ${jobId}: ${err.message}`);
+        });
+    }
+}
+
+/**
  * Trigger the Python 3D reconstruction pipeline via child_process.spawn
  */
-function triggerPythonPipeline(jobId, localVideoPath, outputDir, localSrtPath = null) {
+function triggerPythonPipeline(jobId, localVideoPath, outputDir, localSrtPath = null, pipelineStartTime = Date.now()) {
     const pythonExe = getPythonExecutable();
     const scriptPath = path.join(PROJECT_ROOT, "generation", "run_pipeline.py");
 
@@ -70,13 +94,12 @@ function triggerPythonPipeline(jobId, localVideoPath, outputDir, localSrtPath = 
         args.push("--srt", localSrtPath);
     }
 
-    console.log(`\n------------------------------------------------------------`);
-    console.log(`[PIPELINE START] 🚀 Spawning 3D Reconstruction for Job: [${jobId}]`);
-    console.log(`[PIPELINE EXEC] 🐍 Python Executable: ${pythonExe}`);
-    console.log(`[PIPELINE SCRIPT] 📜 Script: ${scriptPath}`);
-    console.log(`[PIPELINE ARGS] ⚙️ Arguments: ${args.join(" ")}`);
-    console.log(`[PIPELINE CWD] 📂 Working Directory: ${PROJECT_ROOT}`);
-    console.log(`------------------------------------------------------------\n`);
+    console.log(`\n============================================================`);
+    console.log(`[PIPELINE] Started 3D Reconstruction Pipeline`);
+    console.log(`  Job ID: ${jobId}`);
+    console.log(`  Input Video: ${localVideoPath}`);
+    console.log(`  Output Dir: ${outputDir}`);
+    console.log(`============================================================\n`);
 
     const pythonProcess = spawn(pythonExe, args, {
         cwd: PROJECT_ROOT,
@@ -85,24 +108,53 @@ function triggerPythonPipeline(jobId, localVideoPath, outputDir, localSrtPath = 
 
     let stdoutBuffer = "";
     let stderrBuffer = "";
+    let stdoutLineBuffer = "";
+
+    function parseOutputForMilestones(chunk) {
+        stdoutLineBuffer += chunk;
+        const lines = stdoutLineBuffer.split(/\r?\n/);
+        stdoutLineBuffer = lines.pop(); // keep trailing incomplete fragment
+
+        for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) continue;
+
+            if (line.includes("Starting: Step 1")) {
+                updateJobMilestone(jobId, 15, "Extracting frames & telemetry");
+            } else if (line.includes("Starting: Step 2")) {
+                updateJobMilestone(jobId, 30, "Running DUSt3R 3D reconstruction");
+            } else if (line.includes("Solving global scene alignment")) {
+                updateJobMilestone(jobId, 55, "Optimizing camera poses & scene alignment");
+            } else if (line.includes("Starting: Step 4") || line.includes("Gaussian Splatting")) {
+                updateJobMilestone(jobId, 75, "Training 3D Gaussian Splatting model");
+            } else if (line.includes("Starting: Step 5") || line.includes("Mesh & GIS") || line.includes("Poisson reconstruction")) {
+                updateJobMilestone(jobId, 90, "Performing Poisson mesh reconstruction & GLB export");
+            }
+        }
+    }
 
     pythonProcess.stdout.on("data", (data) => {
         process.stdout.write(data);
-        stdoutBuffer += data.toString();
+        const text = data.toString();
+        stdoutBuffer += text;
+        parseOutputForMilestones(text);
     });
 
     pythonProcess.stderr.on("data", (data) => {
         process.stderr.write(data);
-        stderrBuffer += data.toString();
+        const text = data.toString();
+        stderrBuffer += text;
+        parseOutputForMilestones(text);
     });
 
     pythonProcess.on("error", async (err) => {
-        console.error(`[PIPELINE ERROR] ❌ Failed to spawn Python process for Job [${jobId}]:`, err.message);
+        console.error(`\n[PIPELINE ERROR] Failed to spawn Python process for Job [${jobId}]: ${err.message}\n`);
         
         // Update in-memory fallback
         if (inMemoryJobs.has(jobId)) {
             const memJob = inMemoryJobs.get(jobId);
             memJob.status = "FAILED";
+            memJob.stage = "Failed to spawn Python process";
             memJob.error = `Failed to spawn Python process: ${err.message}`;
         }
 
@@ -111,22 +163,43 @@ function triggerPythonPipeline(jobId, localVideoPath, outputDir, localSrtPath = 
             try {
                 await DroneVideo.findByIdAndUpdate(jobId, {
                     status: "FAILED",
+                    stage: "Failed to spawn Python process",
                     error: `Failed to spawn Python process: ${err.message}`
                 });
             } catch (dbErr) {
-                console.error(`[DB ERROR] Could not update failed status for ${jobId}:`, dbErr.message);
+                console.error(`[DATABASE] Could not update failed status for ${jobId}: ${dbErr.message}`);
             }
         }
     });
 
     pythonProcess.on("close", async (code) => {
-        console.log(`\n------------------------------------------------------------`);
-        console.log(`[PIPELINE FINISH] 🏁 Job [${jobId}] process exited with code ${code}`);
+        const durationMs = Date.now() - pipelineStartTime;
+        const durationSec = (durationMs / 1000).toFixed(2);
+        const mins = Math.floor(durationSec / 60);
+        const remSec = (durationSec % 60).toFixed(2);
+        const durationFormatted = mins > 0 ? `${mins}m ${remSec}s` : `${durationSec}s`;
 
         if (code === 0) {
             try {
+                updateJobMilestone(jobId, 100, "Reconstruction complete");
+
+                // Locate generated 3D Model PLY
+                const plyCandidates = [
+                    path.join(outputDir, "model.ply"),
+                    path.join(outputDir, "dust3r", "model.ply"),
+                    path.join(outputDir, "exports", "model.ply"),
+                    path.join(outputDir, "3dgs", "point_cloud_final.ply")
+                ];
+                let foundPly = null;
+                for (const candidate of plyCandidates) {
+                    if (fs.existsSync(candidate)) {
+                        foundPly = candidate;
+                        break;
+                    }
+                }
+
                 // Locate generated 3D Model GLB
-                const candidates = [
+                const glbCandidates = [
                     path.join(outputDir, "model.glb"),
                     path.join(outputDir, "dust3r", "model.glb"),
                     path.join(outputDir, "exports", "model.glb"),
@@ -136,7 +209,7 @@ function triggerPythonPipeline(jobId, localVideoPath, outputDir, localSrtPath = 
                 ];
 
                 let foundGlb = null;
-                for (const candidate of candidates) {
+                for (const candidate of glbCandidates) {
                     if (fs.existsSync(candidate)) {
                         foundGlb = candidate;
                         break;
@@ -147,30 +220,46 @@ function triggerPythonPipeline(jobId, localVideoPath, outputDir, localSrtPath = 
                 const targetGlbPath = path.join(FRONTEND_MODELS_DIR, targetFilename);
                 const defaultGlbPath = path.join(FRONTEND_MODELS_DIR, "model.glb");
 
-                if (foundGlb && fs.existsSync(foundGlb)) {
-                    const fileSize = fs.statSync(foundGlb).size;
-                    console.log(`[FILE TRANSFER] 🎯 Found generated GLB model at: ${foundGlb} (${(fileSize / (1024 * 1024)).toFixed(2)} MB)`);
-                    
-                    fs.copyFileSync(foundGlb, targetGlbPath);
-                    console.log(`[FILE TRANSFER] ✅ Copied GLB model to frontend asset path: ${targetGlbPath}`);
+                const targetPlyFilename = `${jobId}.ply`;
+                const targetPlyPath = path.join(FRONTEND_MODELS_DIR, targetPlyFilename);
+                const defaultPlyPath = path.join(FRONTEND_MODELS_DIR, "model.ply");
 
+                if (foundPly && fs.existsSync(foundPly)) {
+                    fs.copyFileSync(foundPly, targetPlyPath);
+                    fs.copyFileSync(foundPly, defaultPlyPath);
+                }
+
+                if (foundGlb && fs.existsSync(foundGlb)) {
+                    fs.copyFileSync(foundGlb, targetGlbPath);
                     fs.copyFileSync(foundGlb, defaultGlbPath);
-                    console.log(`[FILE TRANSFER] ✅ Updated default fallback model: ${defaultGlbPath}`);
-                } else {
-                    console.warn(`[FILE TRANSFER] ⚠️ No specific GLB found in output directories, using default model at: ${defaultGlbPath}`);
                 }
 
                 const modelUrl = `/models/${targetFilename}`;
+
+                console.log(`\n============================================================`);
+                console.log(`[FILE TRANSFER] 3D Model Formation Complete`);
+                if (foundPly) {
+                    const plySize = (fs.statSync(foundPly).size / (1024 * 1024)).toFixed(2);
+                    console.log(`  Output PLY: ${targetPlyPath} (${plySize} MB)`);
+                }
+                if (foundGlb) {
+                    const glbSize = (fs.statSync(foundGlb).size / (1024 * 1024)).toFixed(2);
+                    console.log(`  Output GLB: ${targetGlbPath} (${glbSize} MB)`);
+                }
+                console.log(`  Total Time: ${durationFormatted} (${durationSec} seconds)`);
+                console.log(`============================================================\n`);
 
                 // Update in-memory job
                 if (inMemoryJobs.has(jobId)) {
                     const memJob = inMemoryJobs.get(jobId);
                     memJob.status = "COMPLETED";
                     memJob.progress = 100;
+                    memJob.stage = "Reconstruction complete";
                     memJob.modelPath = targetGlbPath;
                     memJob.modelGlbUrl = modelUrl;
+                    memJob.totalDuration = durationFormatted;
+                    memJob.durationSeconds = parseFloat(durationSec);
                     memJob.completedAt = new Date();
-                    console.log(`[JOB STATE] ✅ Updated in-memory job [${jobId}] -> COMPLETED`);
                 }
 
                 // Update MongoDB if connected
@@ -178,39 +267,50 @@ function triggerPythonPipeline(jobId, localVideoPath, outputDir, localSrtPath = 
                     await DroneVideo.findByIdAndUpdate(jobId, {
                         status: "COMPLETED",
                         progress: 100,
+                        stage: "Reconstruction complete",
+                        totalDuration: durationFormatted,
+                        durationSeconds: parseFloat(durationSec),
                         modelPath: targetGlbPath,
                         modelGlbUrl: modelUrl,
                         completedAt: new Date()
                     });
-                    console.log(`[DATABASE] ✅ Updated MongoDB document [${jobId}] -> COMPLETED`);
                 }
             } catch (err) {
-                console.error(`[POST-PROCESSING ERROR] Job [${jobId}]:`, err);
+                console.error(`\n[ERROR] Post-processing error for Job [${jobId}]:`, err);
                 if (inMemoryJobs.has(jobId)) {
                     const memJob = inMemoryJobs.get(jobId);
                     memJob.status = "COMPLETED";
                     memJob.progress = 100;
+                    memJob.stage = "Reconstruction complete";
                     memJob.modelGlbUrl = `/models/${jobId}.glb`;
+                    memJob.totalDuration = durationFormatted;
                 }
             }
         } else {
             const errorSummary = stderrBuffer.slice(-500) || `Process exited with code ${code}`;
-            console.error(`[PIPELINE FAILED] ❌ Job [${jobId}] failed:`, errorSummary);
+            console.error(`\n============================================================`);
+            console.error(`[PIPELINE] Reconstruction failed for Job [${jobId}] (exit code ${code})`);
+            console.error(`  Time before failure: ${durationFormatted}`);
+            console.error(`  Error: ${errorSummary}`);
+            console.error(`============================================================\n`);
 
             if (inMemoryJobs.has(jobId)) {
                 const memJob = inMemoryJobs.get(jobId);
                 memJob.status = "FAILED";
+                memJob.stage = "Reconstruction failed";
+                memJob.totalDuration = durationFormatted;
                 memJob.error = errorSummary;
             }
 
             if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(jobId)) {
                 await DroneVideo.findByIdAndUpdate(jobId, {
                     status: "FAILED",
+                    stage: "Reconstruction failed",
+                    totalDuration: durationFormatted,
                     error: errorSummary
                 });
             }
         }
-        console.log(`------------------------------------------------------------\n`);
     });
 }
 
@@ -226,13 +326,11 @@ router.post(
     ]),
     async (req, res) => {
         try {
-            console.log(`\n============================================================`);
-            console.log(`[HTTP UPLOAD] 📥 Incoming POST /api/drone/upload request received`);
-
+            const uploadStartTime = Date.now();
             const videoFile = req.files?.video?.[0] || (req.file ? req.file : null);
 
             if (!videoFile) {
-                console.warn(`[HTTP UPLOAD] ❌ No video file provided in multipart payload`);
+                console.warn(`[UPLOAD] No video file provided in upload request\n`);
                 return res.status(400).json({
                     success: false,
                     message: "No video file provided. Please attach a video file with field name 'video'."
@@ -241,10 +339,6 @@ router.post(
 
             const srtFile = req.files?.srt?.[0] || null;
             const videoSizeMB = (videoFile.buffer.length / (1024 * 1024)).toFixed(2);
-            console.log(`[FILE TRANSFER] 📹 Video received: "${videoFile.originalname}" | Size: ${videoSizeMB} MB | MIME: ${videoFile.mimetype}`);
-            if (srtFile) {
-                console.log(`[FILE TRANSFER] 🛰️ Telemetry SRT received: "${srtFile.originalname}" | Size: ${srtFile.buffer.length} bytes`);
-            }
 
             // Generate unique Job ID (UUID or Mongo ObjectId)
             let jobId;
@@ -254,7 +348,6 @@ router.post(
                 jobId = new mongoose.Types.ObjectId().toString();
             } else {
                 jobId = `job_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-                console.log(`[IN-MEMORY] ℹ️ MongoDB offline. Generated in-memory Job ID: ${jobId}`);
             }
 
             const sanitizedName = videoFile.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -270,9 +363,6 @@ router.post(
             // 1. Save video file to storage/inputs/
             fs.writeFileSync(localVideoPath, videoFile.buffer);
             const writtenStat = fs.statSync(localVideoPath);
-            console.log(`[FILE TRANSFER] ✅ Video successfully saved to disk!`);
-            console.log(`  Path: ${localVideoPath}`);
-            console.log(`  Disk Size: ${(writtenStat.size / (1024 * 1024)).toFixed(2)} MB`);
 
             // 2. Save optional SRT telemetry file
             let localSrtPath = null;
@@ -281,8 +371,16 @@ router.post(
                 const baseName = path.parse(sanitizedName).name;
                 localSrtPath = path.join(STORAGE_INPUTS_DIR, `${jobId}_${baseName}${srtExt}`);
                 fs.writeFileSync(localSrtPath, srtFile.buffer);
-                console.log(`[FILE TRANSFER] ✅ SRT telemetry saved to disk: ${localSrtPath} (${fs.statSync(localSrtPath).size} bytes)`);
             }
+
+            console.log(`\n============================================================`);
+            console.log(`[FILE TRANSFER] Video file received: "${videoFile.originalname}"`);
+            console.log(`  Size: ${(writtenStat.size / (1024 * 1024)).toFixed(2)} MB`);
+            console.log(`  Saved to: ${localVideoPath}`);
+            if (localSrtPath) {
+                console.log(`  Telemetry SRT: ${localSrtPath}`);
+            }
+            console.log(`============================================================\n`);
 
             // 3. Register in-memory job state
             const jobData = {
@@ -293,6 +391,8 @@ router.post(
                 contentType: videoFile.mimetype,
                 status: "PROCESSING",
                 progress: 15,
+                stage: "Extracting frames & telemetry",
+                totalDuration: null,
                 localVideoPath: localVideoPath,
                 localSrtPath: localSrtPath,
                 outputDir: outputJobDir,
@@ -302,12 +402,11 @@ router.post(
                 uploadDate: new Date()
             };
             inMemoryJobs.set(jobId, jobData);
-            console.log(`[JOB REGISTRY] 📋 Job [${jobId}] registered with status: PROCESSING`);
 
             // 4. If MongoDB is connected, also persist to Mongo and GridFS
             if (isMongoConnected) {
                 try {
-                    const videoDoc = await DroneVideo.create({
+                    await DroneVideo.create({
                         _id: new mongoose.Types.ObjectId(jobId),
                         filename: localVideoFilename,
                         originalName: videoFile.originalname,
@@ -315,21 +414,19 @@ router.post(
                         fileId: new mongoose.Types.ObjectId(jobId),
                         status: "PROCESSING",
                         progress: 15,
+                        stage: "Extracting frames & telemetry",
+                        totalDuration: null,
                         localVideoPath: localVideoPath,
                         localSrtPath: localSrtPath,
                         outputDir: outputJobDir
                     });
-                    console.log(`[DATABASE] 💾 Persisted DroneVideo record to MongoDB (ID: ${jobId})`);
                 } catch (dbErr) {
-                    console.warn(`[DATABASE WARNING] Could not write to MongoDB, continuing in-memory:`, dbErr.message);
+                    console.warn(`[DATABASE] Could not write to MongoDB, continuing in-memory: ${dbErr.message}\n`);
                 }
             }
 
             // 5. Trigger Python 3D reconstruction pipeline asynchronously
-            triggerPythonPipeline(jobId, localVideoPath, outputJobDir, localSrtPath);
-
-            console.log(`[HTTP RESPONSE] 📤 Responding to client with videoId: ${jobId} (status: PROCESSING)`);
-            console.log(`============================================================\n`);
+            triggerPythonPipeline(jobId, localVideoPath, outputJobDir, localSrtPath, uploadStartTime);
 
             // 6. Respond immediately with 201 Created and Job ID
             return res.status(201).json({
@@ -338,11 +435,13 @@ router.post(
                 videoId: jobId,
                 jobId: jobId,
                 status: "PROCESSING",
+                progress: 15,
+                stage: "Extracting frames & telemetry",
                 localVideoPath: localVideoPath
             });
 
         } catch (error) {
-            console.error(`[UPLOAD ERROR] ❌ Video upload handling failed:`, error);
+            console.error(`\n[UPLOAD ERROR] Video upload handling failed: ${error.message}\n`);
             return res.status(500).json({
                 success: false,
                 message: "Video upload failed on server",
@@ -354,7 +453,7 @@ router.post(
 
 /**
  * GET /api/drone/status/:id & /api/drone/:id/status
- * Polling endpoint for frontend to check pipeline completion
+ * Polling endpoint for frontend to check pipeline completion (kept clean without console noise)
  */
 const getStatusHandler = async (req, res) => {
     try {
@@ -363,14 +462,16 @@ const getStatusHandler = async (req, res) => {
         // Check in-memory registry first
         if (inMemoryJobs.has(id)) {
             const job = inMemoryJobs.get(id);
-            console.log(`[STATUS POLL] 🔍 Status check for Job [${id}] -> Status: ${job.status}, Progress: ${job.progress}%`);
             return res.status(200).json({
                 success: true,
                 jobId: job.id,
                 id: job.id,
                 filename: job.originalName,
                 status: job.status,
-                progress: job.progress,
+                progress: job.progress !== undefined ? job.progress : 15,
+                stage: job.stage || "Extracting frames & telemetry",
+                totalDuration: job.totalDuration || null,
+                durationSeconds: job.durationSeconds || null,
                 modelPath: job.modelPath,
                 modelGlbUrl: job.modelGlbUrl,
                 error: job.error,
@@ -383,14 +484,16 @@ const getStatusHandler = async (req, res) => {
         if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(id)) {
             const video = await DroneVideo.findById(id);
             if (video) {
-                console.log(`[STATUS POLL] 🔍 Status check (DB) for Job [${id}] -> Status: ${video.status}, Progress: ${video.progress}%`);
                 return res.status(200).json({
                     success: true,
                     jobId: video._id,
                     id: video._id,
                     filename: video.originalName,
                     status: video.status,
-                    progress: video.progress,
+                    progress: video.progress !== undefined ? video.progress : 15,
+                    stage: video.stage || "Extracting frames & telemetry",
+                    totalDuration: video.totalDuration || null,
+                    durationSeconds: video.durationSeconds || null,
                     modelPath: video.modelPath,
                     modelGlbUrl: video.modelGlbUrl,
                     error: video.error,
@@ -400,13 +503,11 @@ const getStatusHandler = async (req, res) => {
             }
         }
 
-        console.warn(`[STATUS POLL] ⚠️ Job ID [${id}] not found in memory or database`);
         return res.status(404).json({
             success: false,
             message: "Drone video job not found"
         });
     } catch (error) {
-        console.error(`[STATUS POLL ERROR] Error checking status for [${req.params.id}]:`, error);
         return res.status(500).json({
             success: false,
             message: "Failed to fetch job status",

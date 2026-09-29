@@ -81,7 +81,6 @@ def run_full_pipeline(config_path: str = "generation/configs/default.yaml", vide
     """
     Executes selected or all steps of the Geo3D reconstruction pipeline.
     """
-    print_banner()
     cfg_p = Path(config_path) if Path(config_path).exists() else generation_dir / "configs" / "default.yaml"
     config = load_yaml_config(cfg_p)
 
@@ -261,11 +260,13 @@ def run_full_pipeline(config_path: str = "generation/configs/default.yaml", vide
     if all_steps or 5 in steps_to_run:
         with PipelineTimer("Step 5: Mesh & GIS Geospatial Export", logger):
             c = config["export_mesh"]
-            # Prefer 3DGS output, fall back to DUSt3R direct output
-            model_ply = train_dir / "point_cloud_final.ply"
-            if not model_ply.exists() and dust3r_ply.exists():
+            # Prefer DUSt3R PLY if available (real reconstructed 3D geometry & RGB colors from video),
+            # otherwise fall back to 3DGS point cloud
+            if dust3r_ply.exists():
                 model_ply = dust3r_ply
-                logger.info(f"Using DUSt3R PLY for export (3DGS PLY not found): {model_ply}")
+                logger.info(f"Using DUSt3R dense PLY for mesh & GIS export: {model_ply}")
+            else:
+                model_ply = train_dir / "point_cloud_final.ply"
             res5 = export_mesh_mod.run_export_pipeline(
                 input_model=str(model_ply),
                 output_dir=str(export_dir),

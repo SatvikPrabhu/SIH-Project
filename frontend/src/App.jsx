@@ -30,10 +30,19 @@ import './App.css';
 
 const API_BASE_URL = 'http://localhost:5000';
 
+const PIPELINE_MILESTONES = [
+  { threshold: 15, name: 'Extracting frames & telemetry', icon: Video },
+  { threshold: 30, name: 'Running DUSt3R 3D reconstruction', icon: Layers },
+  { threshold: 55, name: 'Optimizing camera poses & scene alignment', icon: Compass },
+  { threshold: 75, name: 'Training 3D Gaussian Splatting model', icon: Cpu },
+  { threshold: 90, name: 'Poisson mesh reconstruction & GLB export', icon: Box }
+];
+
 export default function App() {
   // Navigation / Page View State ('home' | 'viewer')
   const [currentView, setCurrentView] = useState('home');
 
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [videoFile, setVideoFile] = useState(null);
   const [videoUrl, setVideoUrl] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -46,9 +55,11 @@ export default function App() {
   const [activeJobId, setActiveJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState('IDLE'); // 'IDLE' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
   const [jobProgress, setJobProgress] = useState(0);
+  const [jobStage, setJobStage] = useState('Extracting frames & telemetry');
   const [jobError, setJobError] = useState(null);
   const [activeModelPath, setActiveModelPath] = useState('/models/model.glb');
   const [modelKey, setModelKey] = useState(Date.now());
+  const [totalDuration, setTotalDuration] = useState(null);
 
   // Pipeline Settings
   const [fps, setFps] = useState(2);
@@ -57,6 +68,7 @@ export default function App() {
 
   const fileInputRef = useRef(null);
   const pollingTimerRef = useRef(null);
+  const generationStartTimeRef = useRef(null);
 
   // Sync hash routing (#viewer <-> #home)
   useEffect(() => {
@@ -71,6 +83,17 @@ export default function App() {
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  // Handle ESC key to dismiss upload pop-up modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && showUploadModal) {
+        setShowUploadModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showUploadModal]);
 
   // Check backend health
   useEffect(() => {
@@ -100,54 +123,76 @@ export default function App() {
     }
   }, []);
 
-  // Poll backend status endpoint for active job
+  // Poll backend status endpoint for active job (silent background updates without console spam)
   const startStatusPolling = useCallback((jobId) => {
     stopPolling();
     setJobStatus('PROCESSING');
     setJobProgress(15);
+    setJobStage('Extracting frames & telemetry');
     setIsProcessing(true);
-
-    console.log(`%c[FRONTEND POLLING] 📡 Initiated status polling for Job ID: ${jobId}`, 'color: #38bdf8; font-weight: bold;');
 
     pollingTimerRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/drone/status/${jobId}`);
-        if (!res.ok) {
-          console.warn(`[FRONTEND POLLING] ⚠️ Status check HTTP ${res.status}: ${res.statusText}`);
-          return;
-        }
+        if (!res.ok) return;
 
         const data = await res.json();
-        console.log(`[FRONTEND POLLING] 📊 Job [${jobId}] Status:`, data.status, `| Progress: ${data.progress || 0}%`, data);
 
         if (data.success) {
+          if (data.progress !== undefined) {
+            setJobProgress(data.progress);
+            setProgress(data.progress);
+          }
+          if (data.stage) {
+            setJobStage(data.stage);
+          }
+          if (data.totalDuration) {
+            setTotalDuration(data.totalDuration);
+          }
+
           if (data.status === 'COMPLETED') {
-            console.log(`%c[FRONTEND POLLING] 🎉 3D Model reconstruction COMPLETED for Job [${jobId}]!`, 'color: #4ade80; font-weight: bold; font-size: 14px;');
+            const durationMs = generationStartTimeRef.current ? Date.now() - generationStartTimeRef.current : 0;
+            const durationSec = (durationMs / 1000).toFixed(2);
+            const mins = Math.floor(durationSec / 60);
+            const remSec = (durationSec % 60).toFixed(2);
+            const durationFormatted = data.totalDuration || (mins > 0 ? `${mins}m ${remSec}s` : `${durationSec}s`);
+
+            setTotalDuration(durationFormatted);
             if (data.modelGlbUrl) {
-              console.log(`%c[FRONTEND POLLING] 📥 Model file URL: ${data.modelGlbUrl}`, 'color: #38bdf8; font-weight: bold;');
               setActiveModelPath(data.modelGlbUrl);
             }
             setJobStatus('COMPLETED');
             setJobProgress(100);
             setProgress(100);
+            setJobStage('Reconstruction complete');
             setIsProcessing(false);
             setModelKey(Date.now());
             stopPolling();
+
+            console.log(`\n============================================================`);
+            console.log(`[FILE TRANSFER] 3D Model Formation Complete`);
+            console.log(`  Job ID: ${jobId}`);
+            if (data.modelGlbUrl) {
+              console.log(`  Output Model: ${data.modelGlbUrl}`);
+            }
+            console.log(`  Total Time: ${durationFormatted} (${durationSec} seconds)`);
+            console.log(`============================================================\n`);
           } else if (data.status === 'FAILED') {
-            console.error(`%c[FRONTEND POLLING] ❌ Pipeline job [${jobId}] FAILED: ${data.error}`, 'color: #f87171; font-weight: bold;');
+            console.error(`\n[PIPELINE FAILED] Job [${jobId}]: ${data.error || 'Reconstruction pipeline failed'}\n`);
             setJobStatus('FAILED');
+            setJobStage('Reconstruction failed');
             setJobError(data.error || 'Reconstruction pipeline failed');
             setIsProcessing(false);
             stopPolling();
           } else if (data.status === 'PROCESSING') {
             setJobStatus('PROCESSING');
-            const newProgress = Math.min(95, (data.progress || 15) + 5);
-            setJobProgress(newProgress);
-            setProgress(newProgress);
+            const realProgress = data.progress !== undefined ? data.progress : 15;
+            setJobProgress(realProgress);
+            setProgress(realProgress);
           }
         }
       } catch (err) {
-        console.warn('[FRONTEND POLLING] ⚠️ Status polling network error:', err);
+        // Polling errors handled silently to avoid terminal/console noise
       }
     }, 2000);
   }, [stopPolling]);
@@ -175,10 +220,16 @@ export default function App() {
   const handleStartPipeline = async () => {
     if (!videoFile) return;
 
+    // Keep the 3D Earth video background intact, and transition pop-up directly to loading screen
+    setShowUploadModal(true);
+
+    generationStartTimeRef.current = Date.now();
+    setTotalDuration(null);
     setIsProcessing(true);
-    setProgress(0);
+    setProgress(10);
     setJobStatus('PROCESSING');
     setJobProgress(10);
+    setJobStage('Extracting frames & telemetry');
     setCurrentStep(1);
 
     const formData = new FormData();
@@ -186,15 +237,12 @@ export default function App() {
     formData.append('fps', fps.toString());
     formData.append('segmentation', segmentationEnabled.toString());
 
-    console.log(`%c[FRONTEND UPLOAD] 🚀 Initiating file transfer to backend...`, 'color: #a855f7; font-weight: bold; font-size: 13px;');
-    console.log('[FRONTEND UPLOAD] 📦 Payload Info:', {
-      fileName: videoFile.name,
-      fileSize: `${(videoFile.size / (1024 * 1024)).toFixed(2)} MB (${videoFile.size} bytes)`,
-      fileType: videoFile.type,
-      targetEndpoint: `${API_BASE_URL}/api/drone/upload`,
-      samplingRateFps: fps,
-      segmentation: segmentationEnabled
-    });
+    console.log(`\n============================================================`);
+    console.log(`[FILE TRANSFER] Sending video to backend for 3D reconstruction`);
+    console.log(`  File: ${videoFile.name}`);
+    console.log(`  Size: ${(videoFile.size / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`  Target: ${API_BASE_URL}/api/drone/upload`);
+    console.log(`============================================================\n`);
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/drone/upload`, {
@@ -202,30 +250,31 @@ export default function App() {
         body: formData
       });
 
-      console.log(`[FRONTEND UPLOAD] 📨 HTTP Response received: ${res.status} ${res.statusText}`);
-
       if (res.ok) {
         const data = await res.json();
         const jobId = data.videoId || data.jobId;
-        console.log(`%c[FRONTEND UPLOAD] ✅ File transfer SUCCESSFUL! Assigned Job ID: ${jobId}`, 'color: #4ade80; font-weight: bold; font-size: 13px;');
-        console.log('[FRONTEND UPLOAD] 📋 Server response data:', data);
+        console.log(`\n============================================================`);
+        console.log(`[FILE TRANSFER] Video file transfer successful`);
+        console.log(`  Job ID: ${jobId}`);
+        console.log(`============================================================\n`);
 
         setActiveJobId(jobId);
         startStatusPolling(jobId);
       } else {
         const errorText = await res.text();
-        console.warn(`[FRONTEND UPLOAD] ❌ Server responded with error status ${res.status}:`, errorText);
-        console.warn('[FRONTEND UPLOAD] ⚠️ Running fallback frame extraction and reconstruction workflow...');
+        console.warn(`\n[UPLOAD] Server responded with status ${res.status}: ${errorText}\n`);
         startLocalSimulation();
       }
     } catch (err) {
-      console.warn(`[FRONTEND UPLOAD] ⚠️ Backend fetch failed (${err.message}). Starting client simulation workflow...`);
+      console.warn(`\n[UPLOAD] Backend connection unavailable (${err.message}). Starting local simulation.\n`);
       startLocalSimulation();
     }
   };
 
   const startLocalSimulation = async () => {
-    console.log('%c[CLIENT SIMULATION] ⚡ Starting local simulation workflow', 'color: #eab308; font-weight: bold;');
+    console.log(`\n============================================================`);
+    console.log(`[SIMULATION] Starting local 3D reconstruction simulation`);
+    console.log(`============================================================\n`);
     const steps = [
       { step: 1, name: 'Extracting keyframes & blur detection', duration: 1800 },
       { step: 2, name: 'YOLOv8 semantic terrain masking', duration: 2200 },
@@ -234,12 +283,12 @@ export default function App() {
       { step: 5, name: 'Exporting 3D GLB & Cesium 3D Tiles', duration: 1200 },
     ];
 
-    let totalDuration = steps.reduce((acc, curr) => acc + curr.duration, 0);
+    let totalDurationMs = steps.reduce((acc, curr) => acc + curr.duration, 0);
     let elapsed = 0;
 
     for (let i = 0; i < steps.length; i++) {
       setCurrentStep(steps[i].step);
-      console.log(`[CLIENT SIMULATION] ⏳ Step ${steps[i].step}/5: ${steps[i].name}...`);
+      setJobStage(steps[i].name);
       const stepDuration = steps[i].duration;
       const intervalMs = 100;
       const ticks = stepDuration / intervalMs;
@@ -247,24 +296,35 @@ export default function App() {
       for (let t = 0; t < ticks; t++) {
         await new Promise((res) => setTimeout(res, intervalMs));
         elapsed += intervalMs;
-        const currentPct = Math.min(100, Math.round((elapsed / totalDuration) * 100));
+        const currentPct = Math.min(100, Math.round((elapsed / totalDurationMs) * 100));
         setProgress(currentPct);
         setJobProgress(currentPct);
       }
     }
 
-    console.log('%c[CLIENT SIMULATION] ✅ Local simulation completed! Loading model...', 'color: #4ade80; font-weight: bold;');
+    const durationSec = ((Date.now() - (generationStartTimeRef.current || Date.now())) / 1000).toFixed(2);
+    const mins = Math.floor(durationSec / 60);
+    const remSec = (durationSec % 60).toFixed(2);
+    const durationFormatted = mins > 0 ? `${mins}m ${remSec}s` : `${durationSec}s`;
+    setTotalDuration(durationFormatted);
+
+    console.log(`\n============================================================`);
+    console.log(`[FILE TRANSFER] 3D Model Formation Complete (Simulation)`);
+    console.log(`  Model File: /models/model.glb`);
+    console.log(`  Total Time: ${durationFormatted} (${durationSec} seconds)`);
+    console.log(`============================================================\n`);
+
     setIsProcessing(false);
     setJobStatus('COMPLETED');
     setActiveModelPath('/models/model.glb');
     setModelKey(Date.now());
   };
 
-  // Video File Selection (Displays video panel without directly redirecting to viewer)
+  // Video File Selection
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('video/')) {
-      console.log(`%c[FILE SELECT] 📁 Video selected from file picker: "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB)`, 'color: #38bdf8;');
+      console.log(`\n[FILE SELECT] Video selected: "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB)\n`);
       loadVideo(file);
     }
   };
@@ -278,7 +338,7 @@ export default function App() {
     setJobStatus('IDLE');
     setCurrentStep(0);
     setIsProcessing(false);
-    console.log(`[FILE READY] 🎬 Video loaded for preview. Object URL created:`, url);
+    setShowUploadModal(true); // Open modal popup whenever a video is uploaded
   };
 
   const handleDragOver = (e) => {
@@ -296,7 +356,7 @@ export default function App() {
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('video/')) {
-      console.log(`%c[FILE DROP] 📂 Video dropped: "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB)`, 'color: #38bdf8;');
+      console.log(`\n[FILE DROP] Video dropped: "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB)\n`);
       loadVideo(file);
     }
   };
@@ -308,18 +368,19 @@ export default function App() {
       type: 'video/mp4',
       lastModified: Date.now()
     };
-    console.log(`%c[SAMPLE SELECT] 🎯 Sample dataset selected: "${sampleName}"`, 'color: #38bdf8;');
+    console.log(`\n[SAMPLE SELECT] Sample dataset selected: "${sampleName}"\n`);
     loadVideo(mockFile);
     setVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
   };
 
   const handleClearVideo = () => {
-    console.log('[FILE CLEAR] 🗑️ Cleared video selection');
+    console.log(`\n[FILE CLEAR] Video selection cleared\n`);
     if (videoUrl && !videoUrl.startsWith('http')) {
       URL.revokeObjectURL(videoUrl);
     }
     setVideoFile(null);
     setVideoUrl('');
+    setShowUploadModal(false);
     setIsProcessing(false);
     setProgress(0);
     setJobProgress(0);
@@ -337,9 +398,12 @@ export default function App() {
         modelUrl={`${activeModelPath}?v=${modelKey}`}
         onReload={() => setModelKey(Date.now())}
         videoFileName={videoFile?.name}
+        jobId={activeJobId}
         jobStatus={jobStatus}
         jobProgress={jobProgress}
+        jobStage={jobStage}
         jobError={jobError}
+        totalDuration={totalDuration}
       />
     );
   }
@@ -371,6 +435,20 @@ export default function App() {
         <div className="hero-grid-pattern"></div>
 
         <div className="hero-content">
+          {/* Active 3D Reconstruction Live Banner */}
+          {jobStatus === 'PROCESSING' && (
+            <div className="active-job-floating-banner" onClick={navigateToViewer}>
+              <div className="banner-left-info">
+                <span className="pulse-dot"></span>
+                <span>Active Reconstruction: <strong>{jobStage} ({jobProgress}%)</strong></span>
+              </div>
+              <span className="banner-action-link">
+                <span>View 3D Loading Viewport</span>
+                <ChevronRight size={15} />
+              </span>
+            </div>
+          )}
+
           {/* Semi-transparent Glass Card for Hero Heading */}
           <div className="hero-text-card">
             <h1 className="hero-title">
@@ -394,190 +472,422 @@ export default function App() {
               className="hidden-file-input"
             />
 
-            {!videoFile ? (
-              /* Dropzone with Big Upload Button */
-              <div
-                className={`upload-dropzone ${isDragging ? 'dropzone-drag' : ''}`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
+            {/* Dropzone with Big Upload Button */}
+            <div
+              className={`upload-dropzone ${isDragging ? 'dropzone-drag' : ''}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              {/* BIG UPLOAD VIDEO BUTTON */}
+              <button
+                type="button"
+                className="big-upload-button"
+                onClick={() => fileInputRef.current?.click()}
               >
-                {/* BIG UPLOAD VIDEO BUTTON */}
-                <button
-                  type="button"
-                  className="big-upload-button"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <div className="upload-icon-circle">
-                    <Upload size={28} />
-                  </div>
-                  <div className="upload-text-group">
-                    <span className="upload-primary-text">Upload Drone Video</span>
-                    <span className="upload-secondary-text">Click to browse or drag & drop files here</span>
-                  </div>
-                </button>
-
-                {/* Formats & File Limit */}
-                <div className="dropzone-format-tags">
-                  <span className="format-tag">MP4</span>
-                  <span className="format-tag">MOV</span>
-                  <span className="format-tag">AVI</span>
-                  <span className="format-tag">MKV</span>
-                  <span className="format-divider">•</span>
-                  <span className="format-note">Supports 4K / 1080p aerial footage</span>
+                <div className="upload-icon-circle">
+                  <Upload size={28} />
                 </div>
-
-                {/* Sample Test Video Quick Select */}
-                <div className="sample-videos-wrapper" style={{ marginTop: '20px' }}>
-                  <span className="sample-label">Or select a sample drone dataset:</span>
-                  <div className="sample-btn-group">
-                    <button 
-                      type="button" 
-                      className="sample-btn"
-                      onClick={() => handleSelectSample('drone_urban_quarry')}
-                    >
-                      <Video size={13} />
-                      <span>Urban Survey 4K</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      className="sample-btn"
-                      onClick={() => handleSelectSample('mountain_topography')}
-                    >
-                      <Video size={13} />
-                      <span>Terrain Topography</span>
-                    </button>
-                  </div>
+                <div className="upload-text-group">
+                  <span className="upload-primary-text">Upload Drone Video</span>
+                  <span className="upload-secondary-text">Click to browse or drag & drop files here</span>
                 </div>
+              </button>
+
+              {/* Formats & File Limit */}
+              <div className="dropzone-format-tags">
+                <span className="format-tag">MP4</span>
+                <span className="format-tag">MOV</span>
+                <span className="format-tag">AVI</span>
+                <span className="format-tag">MKV</span>
+                <span className="format-divider">•</span>
+                <span className="format-note">Supports 4K / 1080p aerial footage</span>
               </div>
-            ) : (
-              /* Selected Video Preview Card */
-              <div className="selected-video-card">
-                <div className="video-card-header">
-                  <div className="video-info-group">
-                    <div className="video-icon-badge">
-                      <FileVideo size={22} />
-                    </div>
-                    <div>
-                      <h4 className="video-filename">{videoFile.name}</h4>
-                      <p className="video-meta">
-                        {(videoFile.size / (1024 * 1024)).toFixed(1)} MB • Ready for Frame Extraction & 3D Reconstruction
-                      </p>
-                    </div>
+
+              {/* If a video is selected and modal is currently closed, show reopen status bar */}
+              {videoFile && !showUploadModal && (
+                <div className="selected-video-reopen-bar">
+                  <div className="selected-video-reopen-info">
+                    <FileVideo size={17} className="text-cyan-400" />
+                    <span className="reopen-filename" title={videoFile.name}>{videoFile.name}</span>
+                    <span className="reopen-size">({(videoFile.size / (1024 * 1024)).toFixed(1)} MB)</span>
                   </div>
-                  <button
-                    type="button"
-                    className="remove-video-btn"
-                    onClick={handleClearVideo}
-                    title="Remove Video"
+                  <div className="reopen-actions">
+                    <button
+                      type="button"
+                      className="btn-reopen-modal"
+                      onClick={() => setShowUploadModal(true)}
+                    >
+                      <Sliders size={13} />
+                      <span>Configure & Start</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-clear-chip"
+                      onClick={handleClearVideo}
+                      title="Clear video"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Sample Test Video Quick Select */}
+              <div className="sample-videos-wrapper" style={{ marginTop: '20px' }}>
+                <span className="sample-label">Or select a sample drone dataset:</span>
+                <div className="sample-btn-group">
+                  <button 
+                    type="button" 
+                    className="sample-btn"
+                    onClick={() => handleSelectSample('drone_urban_quarry')}
                   >
-                    <X size={18} />
+                    <Video size={13} />
+                    <span>Urban Survey 4K</span>
+                  </button>
+                  <button 
+                    type="button" 
+                    className="sample-btn"
+                    onClick={() => handleSelectSample('mountain_topography')}
+                  >
+                    <Video size={13} />
+                    <span>Terrain Topography</span>
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
 
-                {/* Video Player & Pipeline Config Grid */}
-                <div className="preview-body-grid">
-                  <div className="video-player-container">
-                    <video
-                      src={videoUrl}
-                      controls
-                      className="video-player"
-                      muted
-                      playsInline
-                    />
-                  </div>
-
-                  {/* Settings Panel */}
-                  <div className="pipeline-settings-panel">
-                    <h5 className="settings-title">
-                      <Sliders size={16} />
-                      <span>Pipeline Settings</span>
-                    </h5>
-
-                    <div className="setting-row">
-                      <label>Keyframe Sampling Rate</label>
-                      <div className="pill-selector">
-                        {[1, 2, 4, 5].map((val) => (
-                          <button
-                            key={val}
-                            type="button"
-                            className={`pill-opt ${fps === val ? 'selected' : ''}`}
-                            onClick={() => setFps(val)}
-                            disabled={isProcessing}
-                          >
-                            {val} FPS
-                          </button>
-                        ))}
+          {/* Video Upload & Configuration Pop-Up Modal */}
+          {showUploadModal && videoFile && (
+            <div 
+              className="upload-modal-backdrop" 
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setShowUploadModal(false);
+              }}
+            >
+              <div className="upload-modal-card" role="dialog" aria-modal="true">
+                {/* 1. ACTIVE PROCESSING STATE (Loading Screen is Direct Focus) */}
+                {jobStatus === 'PROCESSING' ? (
+                  <>
+                    <div className="upload-modal-header processing-header">
+                      <div className="modal-header-left">
+                        <div className="modal-icon-badge pulse-active">
+                          <RefreshCw size={20} className="spin-anim text-cyan-400" />
+                        </div>
+                        <div>
+                          <div className="modal-tag-badge">
+                            <span className="pulse-dot"></span>
+                            <span>AI 3D RECONSTRUCTION ENGINE ACTIVE</span>
+                          </div>
+                          <h3 className="modal-title">Generating 3D Spatial Twin</h3>
+                          <p className="modal-subtitle">
+                            Source: {videoFile.name} • {activeJobId ? `Job: ${activeJobId}` : 'Running pipeline...'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="setting-row">
-                      <label>YOLOv8 AI Masking</label>
                       <button
                         type="button"
-                        className={`toggle-btn ${segmentationEnabled ? 'active' : ''}`}
-                        onClick={() => setSegmentationEnabled(!segmentationEnabled)}
-                        disabled={isProcessing}
+                        className="modal-close-btn"
+                        onClick={() => setShowUploadModal(false)}
+                        title="Minimize pop-up (reconstruction continues in background)"
                       >
-                        <span className="toggle-slider"></span>
-                        <span className="toggle-label">{segmentationEnabled ? 'Enabled' : 'Disabled'}</span>
+                        <X size={18} />
                       </button>
                     </div>
 
-                    <div className="setting-row">
-                      <label>3D Reconstruction Mode</label>
-                      <span className="setting-badge-highlight">DUSt3R Multi-View Dense</span>
-                    </div>
+                    <div className="upload-modal-body modal-loading-body">
+                      {/* Active Stage Callout Card */}
+                      <div className="modal-stage-highlight">
+                        <span className="stage-mini-pill">ACTIVE PIPELINE STAGE</span>
+                        <h4 className="modal-active-stage-title">{jobStage}</h4>
+                        <p className="modal-active-stage-desc">
+                          Multi-view depth estimation, global scene alignment & neural volumetric splatting in progress.
+                        </p>
+                      </div>
 
-                    {/* Progress Bar (if processing) */}
-                    {isProcessing && (
-                      <div className="progress-container">
-                        <div className="progress-meta">
-                          <span className="progress-step-text">
-                            {currentStep === 1 && `Step 1/5: Extracting keyframes & filtering blur at ${fps} FPS...`}
-                            {currentStep === 2 && "Step 2/5: Feeding frames to /generation & YOLOv8 masking..."}
-                            {currentStep === 3 && "Step 3/5: Reconstructing 3D point cloud with DUSt3R..."}
-                            {currentStep === 4 && "Step 4/5: Aligning GPS metric spatial telemetry..."}
-                            {currentStep === 5 && "Step 5/5: Exporting georeferenced 3D GLB & Cesium Tiles..."}
-                            {currentStep === 0 && `Running Python Pipeline (${jobProgress}%)...`}
-                          </span>
-                          <span className="progress-percentage">{jobProgress || progress}%</span>
+                      {/* Progress Bar Container */}
+                      <div className="modal-progress-wrapper">
+                        <div className="modal-progress-meta">
+                          <span className="progress-label">Current Pipeline Progress</span>
+                          <span className="progress-pct">{jobProgress || progress}%</span>
                         </div>
-                        <div className="progress-bar-bg">
-                          <div className="progress-bar-fill" style={{ width: `${jobProgress || progress}%` }}></div>
+                        <div className="modal-progress-track">
+                          <div
+                            className="modal-progress-bar"
+                            style={{ width: `${Math.max(8, Math.min(100, jobProgress || progress))}%` }}
+                          >
+                            <span className="progress-shimmer"></span>
+                          </div>
                         </div>
                       </div>
-                    )}
 
-                    {/* Process Action Button */}
-                    <button
-                      type="button"
-                      className={`process-launch-btn ${isProcessing ? 'disabled' : ''}`}
-                      onClick={jobStatus === 'COMPLETED' ? navigateToViewer : handleStartPipeline}
-                      disabled={isProcessing}
-                    >
-                      {isProcessing ? (
-                        <>
-                          <RefreshCw size={18} className="spin-anim" />
-                          <span>Extracting Frames & Processing ({jobProgress || progress}%)...</span>
-                        </>
-                      ) : jobStatus === 'COMPLETED' ? (
-                        <>
-                          <CheckCircle2 size={18} className="text-emerald" />
-                          <span>3D Model Ready • View in 3D Viewport</span>
-                        </>
-                      ) : (
-                        <>
-                          <Zap size={18} />
-                          <span>Extract Frames & Start 3D Reconstruction</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
+                      {/* 5-Step Milestones Stepper */}
+                      <div className="modal-milestones-list">
+                        {PIPELINE_MILESTONES.map((m, idx) => {
+                          const currentProg = jobProgress || progress;
+                          const isPassed = currentProg >= m.threshold;
+                          const isCurrent = currentProg >= m.threshold && (idx === PIPELINE_MILESTONES.length - 1 || currentProg < PIPELINE_MILESTONES[idx + 1].threshold);
+                          const StepIcon = m.icon;
+
+                          return (
+                            <div 
+                              key={m.name} 
+                              className={`modal-milestone-item ${isPassed ? 'passed' : ''} ${isCurrent ? 'current' : ''}`}
+                            >
+                              <div className="modal-milestone-icon">
+                                {isPassed && !isCurrent ? (
+                                  <CheckCircle2 size={14} className="text-emerald" />
+                                ) : (
+                                  <StepIcon size={14} />
+                                )}
+                              </div>
+                              <span className="modal-milestone-label">{m.name}</span>
+                              {isCurrent && <span className="modal-current-indicator">In Progress</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="upload-modal-footer">
+                      <div className="modal-footer-notice">
+                        <Sparkles size={14} className="text-cyan-400" />
+                        <span>Background view is live. You can minimize this pop up anytime without interrupting generation.</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-modal-cancel"
+                        onClick={() => setShowUploadModal(false)}
+                      >
+                        Minimize Pop Up
+                      </button>
+                    </div>
+                  </>
+                ) : jobStatus === 'COMPLETED' ? (
+                  /* 2. COMPLETED STATE */
+                  <>
+                    <div className="upload-modal-header success-header">
+                      <div className="modal-header-left">
+                        <div className="modal-icon-badge success-badge">
+                          <CheckCircle2 size={22} className="text-emerald" />
+                        </div>
+                        <div>
+                          <h3 className="modal-title">3D Reconstruction Completed!</h3>
+                          <p className="modal-subtitle">
+                            Source: {videoFile.name} {totalDuration ? `• Generated in ${totalDuration}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="modal-close-btn"
+                        onClick={() => setShowUploadModal(false)}
+                        title="Close pop up"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="upload-modal-body modal-success-body">
+                      <div className="success-hero-box">
+                        <div className="success-icon-ring">
+                          <Box size={32} className="text-cyan-400" />
+                        </div>
+                        <h4>Your 3D Spatial Twin is Ready!</h4>
+                        <p>
+                          Multi-view point cloud and textured 3D mesh have been generated and georeferenced.
+                        </p>
+
+                        <div className="success-meta-pills">
+                          <div className="success-pill">
+                            <span className="pill-lbl">Format:</span>
+                            <span className="pill-val">GLTF / GLB 3D</span>
+                          </div>
+                          {totalDuration && (
+                            <div className="success-pill">
+                              <span className="pill-lbl">Duration:</span>
+                              <span className="pill-val">{totalDuration}</span>
+                            </div>
+                          )}
+                          <div className="success-pill">
+                            <span className="pill-lbl">Engine:</span>
+                            <span className="pill-val">DUSt3R + 3DGS</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="upload-modal-footer">
+                      <a
+                        href={activeModelPath ? activeModelPath.split('?')[0] : '/models/model.glb'}
+                        download="reconstructed_model.glb"
+                        className="btn-modal-cancel"
+                        title="Download GLB for Three.js / Cesium / Blender"
+                      >
+                        <Download size={15} />
+                        <span>Download GLB</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        className="btn-modal-start"
+                        onClick={navigateToViewer}
+                      >
+                        <Eye size={17} />
+                        <span>Explore in Full 3D Inspector</span>
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* 3. IDLE CONFIGURATION STATE */
+                  <>
+                    <div className="upload-modal-header">
+                      <div className="modal-header-left">
+                        <div className="modal-icon-badge">
+                          <Video size={22} />
+                        </div>
+                        <div>
+                          <h3 className="modal-title">Configure 3D Reconstruction</h3>
+                          <p className="modal-subtitle">
+                            Preview aerial footage and customize keyframe extraction & 3D reconstruction parameters
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="modal-close-btn"
+                        onClick={() => setShowUploadModal(false)}
+                        title="Close dialog"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="upload-modal-body">
+                      {/* Left Column: Video Preview */}
+                      <div className="modal-preview-column">
+                        <div className="modal-video-wrapper">
+                          <video
+                            src={videoUrl}
+                            controls
+                            className="modal-video-player"
+                            muted
+                            playsInline
+                          />
+                        </div>
+
+                        <div className="modal-file-metadata-card">
+                          <div className="meta-row">
+                            <span className="meta-label">File:</span>
+                            <span className="meta-val filename-val" title={videoFile.name}>{videoFile.name}</span>
+                          </div>
+                          <div className="meta-row">
+                            <span className="meta-label">Size:</span>
+                            <span className="meta-val">{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                          </div>
+                          <div className="meta-row">
+                            <span className="meta-label">Format:</span>
+                            <span className="meta-val">{videoFile.type || 'video/mp4'}</span>
+                          </div>
+                          <div className="meta-row">
+                            <span className="meta-label">Status:</span>
+                            <span className="meta-badge-ready">Ready for Reconstruction</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Column: Pipeline Settings */}
+                      <div className="modal-settings-column">
+                        <h4 className="modal-section-title">
+                          <Sliders size={16} />
+                          <span>Reconstruction Settings</span>
+                        </h4>
+
+                        {/* Keyframe Sampling Rate */}
+                        <div className="modal-setting-box">
+                          <div className="setting-box-header">
+                            <label>Keyframe Sampling Rate</label>
+                            <span className="setting-hint">Target FPS extracted from video for multi-view stereo</span>
+                          </div>
+                          <div className="pill-selector">
+                            {[1, 2, 4, 5].map((val) => (
+                              <button
+                                key={val}
+                                type="button"
+                                className={`pill-opt ${fps === val ? 'selected' : ''}`}
+                                onClick={() => setFps(val)}
+                              >
+                                {val} FPS
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* YOLOv8 AI Masking */}
+                        <div className="modal-setting-box">
+                          <div className="setting-box-header">
+                            <label>YOLOv8 AI Masking</label>
+                            <span className="setting-hint">Filters sky, vehicles & transient environmental noise</span>
+                          </div>
+                          <button
+                            type="button"
+                            className={`toggle-btn ${segmentationEnabled ? 'active' : ''}`}
+                            onClick={() => setSegmentationEnabled(!segmentationEnabled)}
+                          >
+                            <span className="toggle-slider"></span>
+                            <span className="toggle-label">{segmentationEnabled ? 'Enabled' : 'Disabled'}</span>
+                          </button>
+                        </div>
+
+                        {/* 3D Reconstruction Engine */}
+                        <div className="modal-setting-box">
+                          <div className="setting-box-header">
+                            <label>3D Reconstruction Mode</label>
+                            <span className="setting-hint">End-to-end stereo depth regression</span>
+                          </div>
+                          <div className="engine-badge-row">
+                            <span className="setting-badge-highlight">DUSt3R Multi-View Dense</span>
+                            <span className="setting-badge-sub">Auto-Calibration Active</span>
+                          </div>
+                        </div>
+
+                        {/* Info Notice */}
+                        <div className="modal-info-alert">
+                          <Sparkles size={16} className="text-cyan-400" style={{ flexShrink: 0, marginTop: 2 }} />
+                          <p>
+                            Starting reconstruction will immediately switch this pop up into the <strong>Loading Screen</strong> while the 3D Earth background remains active.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="upload-modal-footer">
+                      <button
+                        type="button"
+                        className="btn-modal-cancel"
+                        onClick={handleClearVideo}
+                      >
+                        <RotateCcw size={15} />
+                        <span>Choose Different Video</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn-modal-start"
+                        onClick={handleStartPipeline}
+                      >
+                        <Zap size={18} />
+                        <span>Extract Frames & Start 3D Reconstruction</span>
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Dedicated 3D Model Inspection Launch Banner for Testers */}
           <section className="inspection-section" id="model-inspection">

@@ -50,12 +50,24 @@ const droneVideoSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    stage: {
+        type: String,
+        default: "Extracting frames & telemetry"
+    },
     uploadDate: {
         type: Date,
         default: Date.now
     },
     completedAt: {
         type: Date,
+        default: null
+    },
+    totalDuration: {
+        type: String,
+        default: null
+    },
+    durationSeconds: {
+        type: Number,
         default: null
     }
 });
