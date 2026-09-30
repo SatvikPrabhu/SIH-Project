@@ -1,0 +1,33 @@
+﻿# Normalize all text files to LF in the repository
+* text=auto eol=lf
+
+# Explicitly force LF for JS/TS/CSS/HTML/Python files
+*.js   text eol=lf
+*.jsx  text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.py   text eol=lf
+*.md   text eol=lf
+*.sh   text eol=lf
+*.env  text eol=lf
+
+# Binary files - no conversion
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.mp4  binary
+*.mov  binary
+*.pth  binary
+*.ply  binary
+*.glb  binary
+*.gltf binary
+*.ttf  binary
+*.woff binary
+*.woff2 binary
