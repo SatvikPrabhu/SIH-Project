@@ -361,17 +361,6 @@ export default function App() {
     }
   };
 
-  const handleSelectSample = (sampleName) => {
-    const mockFile = {
-      name: `${sampleName}.mp4`,
-      size: 42 * 1024 * 1024,
-      type: 'video/mp4',
-      lastModified: Date.now()
-    };
-    console.log(`\n[SAMPLE SELECT] Sample dataset selected: "${sampleName}"\n`);
-    loadVideo(mockFile);
-    setVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
-  };
 
   const handleClearVideo = () => {
     console.log(`\n[FILE CLEAR] Video selection cleared\n`);
@@ -533,28 +522,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* Sample Test Video Quick Select */}
-              <div className="sample-videos-wrapper" style={{ marginTop: '20px' }}>
-                <span className="sample-label">Or select a sample drone dataset:</span>
-                <div className="sample-btn-group">
-                  <button 
-                    type="button" 
-                    className="sample-btn"
-                    onClick={() => handleSelectSample('drone_urban_quarry')}
-                  >
-                    <Video size={13} />
-                    <span>Urban Survey 4K</span>
-                  </button>
-                  <button 
-                    type="button" 
-                    className="sample-btn"
-                    onClick={() => handleSelectSample('mountain_topography')}
-                  >
-                    <Video size={13} />
-                    <span>Terrain Topography</span>
-                  </button>
-                </div>
-              </div>
+
             </div>
           </div>
 
@@ -921,38 +889,99 @@ export default function App() {
             </div>
           </section>
 
-          {/* Quick Metrics & Feature Highlights */}
-          <div className="features-highlight-grid" id="features">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper cyan">
-                <Video size={22} />
-              </div>
-              <h3>Intelligent Keyframing</h3>
-              <p>Extracts sharp, motion-compensated frames while filtering out blurry or redundant viewpoints.</p>
+          {/* Core Capabilities & Feature Highlights */}
+          <div className="features-section-wrapper" id="features">
+            <div className="features-section-header">
+              <span className="features-section-badge">
+                <Sparkles size={12} />
+                <span>CORE PIPELINE CAPABILITIES</span>
+              </span>
+              <h2 className="features-section-title">Autonomous 3D Spatial Intelligence</h2>
+              <p className="features-section-subtitle">
+                Engineered for complex drone survey trajectories, GPS-denied environments, and sub-meter GIS geospatial mapping.
+              </p>
             </div>
 
-            <div className="feature-card">
-              <div className="feature-icon-wrapper purple">
-                <Cpu size={22} />
+            <div className="features-highlight-grid">
+              {/* Feature 1: Intelligent Keyframing */}
+              <div className="feature-card cyan">
+                <div className="feature-card-top">
+                  <div className="feature-icon-wrapper cyan">
+                    <Video size={22} />
+                  </div>
+                  <span className="feature-index-tag">01</span>
+                </div>
+                <span className="feature-category-pill">ADAPTIVE EXTRACTION</span>
+                <h3>Intelligent Keyframing</h3>
+                <p>
+                  Extracts sharp, motion-compensated frames while filtering out blurry drone turns, pitch wobble, and redundant viewpoints using Laplacian variance and optical flow metrics.
+                </p>
+                <div className="feature-tags-list">
+                  <span className="feature-tag-chip">Laplacian Blur Guard</span>
+                  <span className="feature-tag-chip">SSIM Baseline Pruning</span>
+                  <span className="feature-tag-chip">4K Ingestion</span>
+                </div>
               </div>
-              <h3>YOLOv8 AI Masking</h3>
-              <p>Performs instant instance segmentation on dynamic objects, terrain features, and structures.</p>
-            </div>
 
-            <div className="feature-card">
-              <div className="feature-icon-wrapper emerald">
-                <Layers size={22} />
+              {/* Feature 2: YOLOv8 AI Masking */}
+              <div className="feature-card purple">
+                <div className="feature-card-top">
+                  <div className="feature-icon-wrapper purple">
+                    <Cpu size={22} />
+                  </div>
+                  <span className="feature-index-tag">02</span>
+                </div>
+                <span className="feature-category-pill">DYNAMIC SEGMENTATION</span>
+                <h3>YOLOv8 AI Masking</h3>
+                <p>
+                  Performs instant instance segmentation on moving vehicles, personnel, and sky boundaries to eliminate transient ghosting artifacts from reconstructed 3D geometry.
+                </p>
+                <div className="feature-tags-list">
+                  <span className="feature-tag-chip">Dynamic Object Exclusion</span>
+                  <span className="feature-tag-chip">Sky Inpainting Mask</span>
+                  <span className="feature-tag-chip">Edge-Preserving</span>
+                </div>
               </div>
-              <h3>Dust3R 3D Point Cloud</h3>
-              <p>Generates dense 3D point clouds without manual camera calibration or extrinsic pose matrices.</p>
-            </div>
 
-            <div className="feature-card">
-              <div className="feature-icon-wrapper blue">
-                <Globe2 size={22} />
+              {/* Feature 3: DUSt3R 3D Point Cloud */}
+              <div className="feature-card blue">
+                <div className="feature-card-top">
+                  <div className="feature-icon-wrapper blue">
+                    <Layers size={22} />
+                  </div>
+                  <span className="feature-index-tag">03</span>
+                </div>
+                <span className="feature-category-pill">NEURAL STEREO</span>
+                <h3>DUSt3R 3D Point Cloud</h3>
+                <p>
+                  Generates dense 3D point clouds and depth regression directly from uncalibrated multi-view pairs without requiring manual camera intrinsics, Colmap, or SfM bundles.
+                </p>
+                <div className="feature-tags-list">
+                  <span className="feature-tag-chip">Zero-Calibration</span>
+                  <span className="feature-tag-chip">ViT Cross-Attention</span>
+                  <span className="feature-tag-chip">Direct Pointmaps</span>
+                </div>
               </div>
-              <h3>Cesium GIS Integration</h3>
-              <p>Exports georeferenced LAS, GeoTIFF, and 3D Tiles for sub-meter GIS geospatial mapping.</p>
+
+              {/* Feature 4: Cesium GIS Integration */}
+              <div className="feature-card emerald">
+                <div className="feature-card-top">
+                  <div className="feature-icon-wrapper emerald">
+                    <Globe2 size={22} />
+                  </div>
+                  <span className="feature-index-tag">04</span>
+                </div>
+                <span className="feature-category-pill">GEOSPATIAL ANCHORING</span>
+                <h3>Cesium GIS Integration</h3>
+                <p>
+                  Exports georeferenced ASPRS LAS, high-resolution GeoTIFF elevation models, and OGC 3D Tiles synchronized with drone GPS/IMU telemetry for sub-meter GIS mapping.
+                </p>
+                <div className="feature-tags-list">
+                  <span className="feature-tag-chip">WGS-84 / UTM CRS</span>
+                  <span className="feature-tag-chip">OGC 3D Tiles</span>
+                  <span className="feature-tag-chip">Sub-Meter Precision</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -65,8 +65,8 @@ export default function ModelViewer({
   pointSize = 0.03,
   className = ''
 }) {
-  // OpenCV coordinate systems (DUSt3R) have Y pointing down, so flipping around X-axis (180°) renders the model upright in Three.js
-  const [isFlipped, setIsFlipped] = useState(true);
+  // Models are saved in standard OpenGL/GLTF coordinates (+Y up). If viewing an unadjusted legacy model, user can flip it 180°.
+  const [isFlipped, setIsFlipped] = useState(false);
   const [rotationY, setRotationY] = useState(0);
 
   const handleToggleFlip = () => {
@@ -78,7 +78,7 @@ export default function ModelViewer({
   };
 
   const handleResetOrientation = () => {
-    setIsFlipped(true);
+    setIsFlipped(false);
     setRotationY(0);
   };
 
@@ -115,10 +115,10 @@ export default function ModelViewer({
           type="button"
           className={`hud-control-btn ${isFlipped ? 'active' : ''}`}
           onClick={handleToggleFlip}
-          title={isFlipped ? "Model is flipped upright (180°). Click to invert." : "Click to flip model upright (180°)"}
+          title={isFlipped ? "Model is inverted (180°). Click to restore standard upright orientation." : "Click to flip model orientation (180°)"}
         >
           <FlipVertical size={14} />
-          <span>{isFlipped ? 'Flipped Upright (180°)' : 'Flip Upside Down'}</span>
+          <span>{isFlipped ? 'Inverted (180°)' : 'Flip Orientation (180°)'}</span>
         </button>
 
         <button
@@ -131,7 +131,7 @@ export default function ModelViewer({
           <span>Rotate 90°</span>
         </button>
 
-        {(!isFlipped || rotationY !== 0) && (
+        {(isFlipped || rotationY !== 0) && (
           <button
             type="button"
             className="hud-control-btn reset"
