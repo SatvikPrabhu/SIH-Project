@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import ModelViewer from './ModelViewer';
+import GlassCard from './ui/GlassCard';
+import Button from './ui/Button';
+import ProgressBar from './ui/ProgressBar';
+import AssemblyVisualizer from './ui/AssemblyVisualizer';
 import { 
   ArrowLeft, 
   RotateCcw, 
@@ -157,42 +161,37 @@ export default function ViewerPage({
       <main className="viewer-main-content">
         <div className="viewer-stage-box">
           {isProcessing ? (
-            /* Dynamic Reconstruction Loading Screen */
+            /* Immersive Calm Pastel Processing & Assembly Screen */
             <div className="reconstruction-loading-panel">
-              <div className="reconstruction-glow-backdrop"></div>
-              
-              <div className="reconstruction-loader-card">
-                {/* Status Pill Badge */}
-                <div className="reconstruction-status-pill">
-                  <span className="pulsing-radar-dot"></span>
-                  <span>AI RECONSTRUCTION ENGINE ACTIVE</span>
+              <div className="processing-assembly-stage">
+                <AssemblyVisualizer progress={progress} width={420} height={260} />
+                
+                <div className="processing-header-group">
+                  <div className="processing-badge">
+                    <span className="processing-badge__dot"></span>
+                    <span>Reconstruction in Progress</span>
+                  </div>
+                  <h3 className="processing-stage-title">{stage}</h3>
+                  <p className="processing-stage-desc">
+                    Synthesizing multi-view visual features, estimating depth coordinates, and assembling spatial geometry.
+                  </p>
                 </div>
 
-                {/* Active Stage Name as descriptive text */}
-                <h3 className="active-stage-title">{stage}</h3>
-                <p className="active-stage-subtitle">
-                  Single-pass multi-view point cloud reconstruction, camera pose optimization & geospatial alignment
-                </p>
+                <div className="processing-progress-box">
+                  <ProgressBar progress={progress} showPercent={true} />
+                </div>
+              </div>
 
-                {/* Animated Progress Bar */}
-                <div className="stage-progress-container">
-                  <div className="stage-progress-meta">
-                    <span className="stage-progress-label">Current Progress</span>
-                    <span className="stage-progress-percent">{progress}%</span>
-                  </div>
-
-                  <div className="stage-progress-bar-bg">
-                    <div 
-                      className="stage-progress-bar-fill" 
-                      style={{ width: `${Math.max(6, Math.min(100, progress))}%` }}
-                    >
-                      <span className="stage-progress-shimmer"></span>
-                    </div>
-                  </div>
+              {/* Refined Pipeline Stages Card */}
+              <GlassCard className="processing-stages-card">
+                <div className="stages-card-header">
+                  <span className="stages-card-title">Pipeline Milestones</span>
+                  <span className="stages-card-count tabular-nums">
+                    {milestones.filter(m => progress >= m.threshold).length} of {milestones.length}
+                  </span>
                 </div>
 
-                {/* Major Milestones Stepper */}
-                <div className="pipeline-milestones-stepper">
+                <div className="stages-list">
                   {milestones.map((m, idx) => {
                     const isPassed = progress >= m.threshold;
                     const isCurrent = (progress >= m.threshold) && (idx === milestones.length - 1 || progress < milestones[idx + 1].threshold);
@@ -201,21 +200,44 @@ export default function ViewerPage({
                     return (
                       <div 
                         key={m.name} 
-                        className={`milestone-item ${isPassed ? 'passed' : ''} ${isCurrent ? 'current' : ''}`}
+                        className={`stage-row ${isPassed ? 'is-passed' : ''} ${isCurrent ? 'is-current' : ''}`}
                       >
-                        <div className="milestone-icon-bubble">
+                        <div className="stage-row__indicator">
                           {isPassed && !isCurrent ? (
-                            <CheckCircle2 size={13} className="text-emerald-400" />
+                            <CheckCircle2 size={15} className="stage-icon-complete" />
                           ) : (
-                            <StepIcon size={13} />
+                            <span className="stage-dot" />
                           )}
                         </div>
-                        <span className="milestone-name">{m.name}</span>
+
+                        <span className="stage-row__label">{m.name}</span>
+
+                        {isCurrent && (
+                          <span className="stage-row__status-tag">Active</span>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-              </div>
+              </GlassCard>
+            </div>
+          ) : status === 'FAILED' ? (
+            /* Graceful Error State */
+            <div className="reconstruction-error-panel">
+              <GlassCard className="error-card">
+                <div className="error-icon-box">
+                  <AlertTriangle size={24} />
+                </div>
+                <h3 className="error-title">Reconstruction Paused</h3>
+                <p className="error-desc">
+                  {error || 'The system could not complete the reconstruction from the uploaded video. Please verify the video quality and try again.'}
+                </p>
+                <div className="error-actions">
+                  <Button variant="secondary" onClick={onBack}>
+                    Back to Dashboard
+                  </Button>
+                </div>
+              </GlassCard>
             </div>
           ) : (
             <ModelViewer modelUrl={modelUrl} pointSize={pointSize} />

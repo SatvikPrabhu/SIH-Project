@@ -1,60 +1,90 @@
 /* ==========================================================================
-   AeroRecon 3D - Defense & Geospatial Mission Operations Design System
+   Geo3D Vision Design System
+   Direction: Cinematic spatial-computing / aerial-survey tool.
+   Atmosphere: Deep navy night sky, cyan accents, frosted dark glass.
    ========================================================================== */
 
 :root {
+  /* Typography */
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-  /* Tactical Dark Palette */
-  --bg-space: #07090e;
-  --bg-primary: #0b0f19;
-  --bg-secondary: #111827;
-  --bg-tertiary: #1f2937;
-  --bg-surface: rgba(17, 24, 39, 0.75);
-  --bg-surface-hover: rgba(31, 41, 55, 0.85);
-  --bg-glass: rgba(15, 23, 42, 0.65);
+  /* Atmosphere */
+  --bg-base: #080a0f;
+  --bg-subtle: #0c111b;
+  --bg-elevated: #121826;
+  --bg-canvas-3d: #0a0f1d;
+  --bg-gradient-mesh:
+    radial-gradient(at 12% 8%, rgba(14, 116, 144, 0.18) 0%, transparent 45%),
+    radial-gradient(at 88% 12%, rgba(67, 56, 202, 0.16) 0%, transparent 42%),
+    radial-gradient(at 50% 50%, rgba(15, 23, 42, 0.4) 0%, transparent 55%),
+    radial-gradient(at 80% 90%, rgba(16, 185, 129, 0.08) 0%, transparent 50%),
+    #080a0f;
 
-  /* Tactical Accents */
-  --emerald-primary: #10b981;
-  --emerald-glow: rgba(16, 185, 129, 0.35);
-  --cyan-primary: #06b6d4;
-  --cyan-glow: rgba(6, 182, 212, 0.35);
-  --sky-accent: #38bdf8;
-  --amber-warning: #f59e0b;
-  --amber-glow: rgba(245, 158, 11, 0.25);
-  --rose-danger: #f43f5e;
-  --indigo-tech: #6366f1;
+  /* Frosted dark glass */
+  --glass-bg: rgba(12, 18, 32, 0.72);
+  --glass-bg-hover: rgba(18, 26, 44, 0.86);
+  --glass-bg-solid: rgba(12, 18, 32, 0.96);
+  --glass-border: rgba(148, 163, 184, 0.16);
+  --glass-border-subtle: rgba(148, 163, 184, 0.1);
+  --glass-border-hover: rgba(56, 189, 248, 0.4);
+  --glass-blur: blur(18px);
+  --glass-blur-heavy: blur(28px);
 
-  /* Borders & Dividers */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-tactical: rgba(16, 185, 129, 0.25);
-  --border-highlight: rgba(56, 189, 248, 0.4);
-  --border-active: #10b981;
+  /* Text — light on dark */
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-subtle: #64748b;
+  --text-inverse: #0f172a;
 
-  /* Typography Colors */
-  --text-primary: #f9fafb;
-  --text-secondary: #9ca3af;
-  --text-muted: #64748b;
-  --text-dim: #475569;
+  /* Accent: sky / cyan */
+  --accent-primary: #38bdf8;
+  --accent-primary-hover: #7dd3fc;
+  --accent-primary-pressed: #0ea5e9;
+  --accent-primary-light: rgba(56, 189, 248, 0.12);
+  --accent-primary-border: rgba(56, 189, 248, 0.35);
+  --accent-primary-glow: rgba(56, 189, 248, 0.22);
+  --accent-fill: #0284c7;
+  --accent-fill-hover: #0369a1;
+
+  --accent-teal: #34d399;
+  --accent-teal-light: rgba(16, 185, 129, 0.12);
+  --accent-teal-border: rgba(16, 185, 129, 0.32);
+  --accent-teal-glow: rgba(16, 185, 129, 0.18);
+
+  /* Status */
+  --status-success: #34d399;
+  --status-success-bg: rgba(16, 185, 129, 0.12);
+  --status-success-border: rgba(16, 185, 129, 0.32);
+  --status-warning: #fbbf24;
+  --status-warning-bg: rgba(245, 158, 11, 0.12);
+  --status-warning-border: rgba(245, 158, 11, 0.35);
+  --status-error: #f87171;
+  --status-error-bg: rgba(239, 68, 68, 0.12);
+  --status-error-border: rgba(239, 68, 68, 0.35);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5), 0 0 24px rgba(56, 189, 248, 0.06);
+  --shadow-xl: 0 28px 64px rgba(0, 0, 0, 0.62), 0 0 36px rgba(56, 189, 248, 0.1);
+  --shadow-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
   /* Radii */
-  --radius-xs: 4px;
+  --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-xl: 22px;
+  --radius-2xl: 28px;
   --radius-full: 9999px;
 
-  /* Shadows & Glows */
-  --shadow-tactical: 0 10px 30px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(16, 185, 129, 0.08);
-  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.5);
-  --glow-btn: 0 0 25px rgba(16, 185, 129, 0.4), 0 4px 15px rgba(6, 182, 212, 0.3);
-  --glow-btn-hover: 0 0 35px rgba(16, 185, 129, 0.65), 0 6px 25px rgba(6, 182, 212, 0.5);
-
-  /* Transitions */
-  --trans-fast: 0.15s ease;
-  --trans-smooth: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
 }
 
 *, *::before, *::after {
@@ -66,58 +96,68 @@
 html, body {
   min-height: 100vh;
   font-family: var(--font-sans);
-  background-color: var(--bg-space);
+  background-color: var(--bg-base);
   color: var(--text-primary);
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
 }
 
 body {
-  background-image: 
-    radial-gradient(circle at 50% 0%, rgba(6, 182, 212, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 90% 20%, rgba(16, 185, 129, 0.06) 0%, transparent 40%),
-    radial-gradient(circle at 10% 80%, rgba(99, 102, 241, 0.05) 0%, transparent 45%),
-    linear-gradient(to bottom, #07090e 0%, #0b0f19 50%, #07090e 100%);
+  background: var(--bg-gradient-mesh);
   background-attachment: fixed;
 }
 
-/* Custom Tactical Scrollbars */
+.text-emerald {
+  color: var(--accent-teal);
+}
+
+.tabular-nums, .progress-num, .stat-value, .hud-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-space);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(148, 163, 184, 0.28);
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--emerald-primary);
+  background: rgba(148, 163, 184, 0.45);
 }
 
-/* Tactical Animations */
-@keyframes radarSweep {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
-@keyframes pulseLed {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.92); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-@keyframes scanline {
-  0% { background-position: 0 0; }
-  100% { background-position: 0 100%; }
-}
-
-@keyframes floatGentle {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+@supports not (backdrop-filter: blur(10px)) {
+  .glass-card,
+  .upload-modal-card,
+  .simple-navbar,
+  .hud-hints-card,
+  .hud-badge,
+  .viewer-topbar,
+  .viewer-meta-strip {
+    background-color: var(--glass-bg-solid) !important;
+  }
 }

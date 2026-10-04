@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import ViewerPage from './components/ViewerPage';
+import GlassCard from './components/ui/GlassCard';
+import Button from './components/ui/Button';
+import Switch from './components/ui/Switch';
+import SegmentedControl from './components/ui/SegmentedControl';
+import ProgressBar from './components/ui/ProgressBar';
+import AssemblyVisualizer from './components/ui/AssemblyVisualizer';
 import {
   Upload,
   FileVideo,
@@ -23,7 +29,8 @@ import {
   Eye,
   RotateCcw,
   ExternalLink,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 import heroBgVideo from './assets/HomePageGIF.mp4';
 import './App.css';
@@ -397,15 +404,20 @@ export default function App() {
     );
   }
 
+  const currentWorkflowStep = currentView === 'viewer' || jobStatus === 'COMPLETED' ? 3
+    : jobStatus === 'PROCESSING' ? 2
+    : videoFile ? 1
+    : 0;
+
   // Otherwise, render the Main Landing & Upload Page
   return (
     <div className="app-container" id="home">
-      {/* 1. Simple Navbar */}
-      <Navbar backendOnline={backendOnline} />
+      {/* 1. Minimal Glass Navbar with Step Indicator */}
+      <Navbar backendOnline={backendOnline} currentStep={currentWorkflowStep} />
 
-      {/* 2. Hero & Video Upload Section with 3D Earth Background */}
+      {/* 2. Hero & Video Upload Section */}
       <main className="hero-section" id="upload-section">
-        {/* 3D Google Earth Background Video Loop */}
+        {/* Soft atmospheric background video layer */}
         <div className="hero-video-bg-container">
           <video
             className="hero-bg-video"
@@ -419,39 +431,38 @@ export default function App() {
           <div className="hero-video-overlay"></div>
         </div>
 
-        <div className="hero-glow-sphere sphere-1"></div>
-        <div className="hero-glow-sphere sphere-2"></div>
-        <div className="hero-grid-pattern"></div>
-
         <div className="hero-content">
           {/* Active 3D Reconstruction Live Banner */}
           {jobStatus === 'PROCESSING' && (
-            <div className="active-job-floating-banner" onClick={navigateToViewer}>
+            <GlassCard className="active-job-floating-banner" onClick={navigateToViewer}>
               <div className="banner-left-info">
                 <span className="pulse-dot"></span>
                 <span>Active Reconstruction: <strong>{jobStage} ({jobProgress}%)</strong></span>
               </div>
               <span className="banner-action-link">
-                <span>View 3D Loading Viewport</span>
+                <span>Open Viewport</span>
                 <ChevronRight size={15} />
               </span>
-            </div>
+            </GlassCard>
           )}
 
-          {/* Semi-transparent Glass Card for Hero Heading */}
-          <div className="hero-text-card">
+          {/* Centered Hero Card */}
+          <GlassCard className="hero-text-card">
+            <div className="hero-badge">
+              <span className="hero-badge__dot"></span>
+              <span>Spatial Computing & Aerial Survey</span>
+            </div>
+
             <h1 className="hero-title">
-              Transform Aerial Drone Videos into <br />
-              <span className="text-gradient">Interactive 3D Geospatial Twins</span>
+              Aerial Video to <span className="hero-title-accent">3D Spatial Twin</span>
             </h1>
 
             <p className="hero-subtitle">
-              Upload multi-view drone footage to automatically extract motion-aware keyframes,
-              segment semantic terrain with YOLOv8, and reconstruct dense 3D point clouds with Dust3R.
+              Upload multi-view drone footage to automatically extract motion-compensated keyframes, segment terrain features, and reconstruct dense 3D geospatial point clouds.
             </p>
-          </div>
+          </GlassCard>
 
-          {/* Upload Area / Big Upload Video Button */}
+          {/* Screen 1: Upload Dropzone Area */}
           <div className="upload-container" id="upload-section">
             <input
               type="file"
@@ -461,55 +472,68 @@ export default function App() {
               className="hidden-file-input"
             />
 
-            {/* Dropzone with Big Upload Button */}
             <div
               className={`upload-dropzone ${isDragging ? 'dropzone-drag' : ''}`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              aria-label="Upload drone video drop zone"
             >
-              {/* BIG UPLOAD VIDEO BUTTON */}
-              <button
-                type="button"
-                className="big-upload-button"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <div className="upload-icon-circle">
-                  <Upload size={28} />
-                </div>
-                <div className="upload-text-group">
-                  <span className="upload-primary-text">Upload Drone Video</span>
-                  <span className="upload-secondary-text">Click to browse or drag & drop files here</span>
-                </div>
-              </button>
+              <div className="upload-icon-circle">
+                <Upload size={26} />
+              </div>
 
-              {/* Formats & File Limit */}
+              <div className="upload-text-group">
+                <span className="upload-primary-text">Drag and drop your drone footage</span>
+                <span className="upload-secondary-text">or choose a video file from your computer</span>
+              </div>
+
+              <div className="upload-browse-action">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  Browse Files
+                </Button>
+              </div>
+
               <div className="dropzone-format-tags">
-                <span className="format-tag">MP4</span>
-                <span className="format-tag">MOV</span>
-                <span className="format-tag">AVI</span>
-                <span className="format-tag">MKV</span>
-                <span className="format-divider">•</span>
-                <span className="format-note">Supports 4K / 1080p aerial footage</span>
+                <span>MP4, MOV, AVI, MKV • Up to 4K resolution</span>
               </div>
 
               {/* If a video is selected and modal is currently closed, show reopen status bar */}
               {videoFile && !showUploadModal && (
-                <div className="selected-video-reopen-bar">
+                <div 
+                  className="selected-video-reopen-bar"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div className="selected-video-reopen-info">
-                    <FileVideo size={17} className="text-cyan-400" />
+                    <FileVideo size={17} className="file-icon-accent" />
                     <span className="reopen-filename" title={videoFile.name}>{videoFile.name}</span>
-                    <span className="reopen-size">({(videoFile.size / (1024 * 1024)).toFixed(1)} MB)</span>
+                    <span className="reopen-size tabular-nums">({(videoFile.size / (1024 * 1024)).toFixed(1)} MB)</span>
                   </div>
                   <div className="reopen-actions">
-                    <button
-                      type="button"
-                      className="btn-reopen-modal"
+                    <Button
+                      variant="primary"
+                      size="sm"
                       onClick={() => setShowUploadModal(true)}
+                      icon={<Sliders size={13} />}
                     >
-                      <Sliders size={13} />
-                      <span>Configure & Start</span>
-                    </button>
+                      Review & Configure
+                    </Button>
                     <button
                       type="button"
                       className="btn-clear-chip"
@@ -521,12 +545,10 @@ export default function App() {
                   </div>
                 </div>
               )}
-
-
             </div>
           </div>
 
-          {/* Video Upload & Configuration Pop-Up Modal */}
+          {/* Screen 2 & 3: Review & Processing Modal Dialog */}
           {showUploadModal && videoFile && (
             <div 
               className="upload-modal-backdrop" 
@@ -534,23 +556,23 @@ export default function App() {
                 if (e.target === e.currentTarget) setShowUploadModal(false);
               }}
             >
-              <div className="upload-modal-card" role="dialog" aria-modal="true">
-                {/* 1. ACTIVE PROCESSING STATE (Loading Screen is Direct Focus) */}
+              <GlassCard className="upload-modal-card" role="dialog" aria-modal="true">
+                {/* 1. ACTIVE PROCESSING STATE (Screen 3: Processing in Modal) */}
                 {jobStatus === 'PROCESSING' ? (
                   <>
                     <div className="upload-modal-header processing-header">
                       <div className="modal-header-left">
-                        <div className="modal-icon-badge pulse-active">
-                          <RefreshCw size={20} className="spin-anim text-cyan-400" />
+                        <div className="modal-icon-badge">
+                          <RefreshCw size={18} className="spin-anim" />
                         </div>
                         <div>
                           <div className="modal-tag-badge">
                             <span className="pulse-dot"></span>
-                            <span>AI 3D RECONSTRUCTION ENGINE ACTIVE</span>
+                            <span>RECONSTRUCTION ACTIVE</span>
                           </div>
                           <h3 className="modal-title">Generating 3D Spatial Twin</h3>
                           <p className="modal-subtitle">
-                            Source: {videoFile.name} • {activeJobId ? `Job: ${activeJobId}` : 'Running pipeline...'}
+                            Source: {videoFile.name} • {activeJobId ? `Job: ${activeJobId}` : 'Processing frames...'}
                           </p>
                         </div>
                       </div>
@@ -558,14 +580,17 @@ export default function App() {
                         type="button"
                         className="modal-close-btn"
                         onClick={() => setShowUploadModal(false)}
-                        title="Minimize pop-up (reconstruction continues in background)"
+                        title="Minimize window (reconstruction continues in background)"
                       >
                         <X size={18} />
                       </button>
                     </div>
 
                     <div className="upload-modal-body modal-loading-body">
-                      {/* Active Stage Callout Card */}
+                      {/* Central Assembling 3D Visualizer */}
+                      <AssemblyVisualizer progress={jobProgress || progress} width={380} height={200} />
+
+                      {/* Active Stage Callout */}
                       <div className="modal-stage-highlight">
                         <span className="stage-mini-pill">ACTIVE PIPELINE STAGE</span>
                         <h4 className="modal-active-stage-title">{jobStage}</h4>
@@ -576,27 +601,15 @@ export default function App() {
 
                       {/* Progress Bar Container */}
                       <div className="modal-progress-wrapper">
-                        <div className="modal-progress-meta">
-                          <span className="progress-label">Current Pipeline Progress</span>
-                          <span className="progress-pct">{jobProgress || progress}%</span>
-                        </div>
-                        <div className="modal-progress-track">
-                          <div
-                            className="modal-progress-bar"
-                            style={{ width: `${Math.max(8, Math.min(100, jobProgress || progress))}%` }}
-                          >
-                            <span className="progress-shimmer"></span>
-                          </div>
-                        </div>
+                        <ProgressBar progress={jobProgress || progress} label="Overall Progress" showPercent={true} />
                       </div>
 
-                      {/* 5-Step Milestones Stepper */}
+                      {/* Milestones Stepper */}
                       <div className="modal-milestones-list">
                         {PIPELINE_MILESTONES.map((m, idx) => {
                           const currentProg = jobProgress || progress;
                           const isPassed = currentProg >= m.threshold;
                           const isCurrent = currentProg >= m.threshold && (idx === PIPELINE_MILESTONES.length - 1 || currentProg < PIPELINE_MILESTONES[idx + 1].threshold);
-                          const StepIcon = m.icon;
 
                           return (
                             <div 
@@ -607,7 +620,7 @@ export default function App() {
                                 {isPassed && !isCurrent ? (
                                   <CheckCircle2 size={14} className="text-emerald" />
                                 ) : (
-                                  <StepIcon size={14} />
+                                  <span className="modal-step-dot" />
                                 )}
                               </div>
                               <span className="modal-milestone-label">{m.name}</span>
@@ -620,16 +633,16 @@ export default function App() {
 
                     <div className="upload-modal-footer">
                       <div className="modal-footer-notice">
-                        <Sparkles size={14} className="text-cyan-400" />
-                        <span>Background view is live. You can minimize this pop up anytime without interrupting generation.</span>
+                        <Sparkles size={14} style={{ flexShrink: 0 }} />
+                        <span>Background view is live. You can minimize this window anytime without interrupting generation.</span>
                       </div>
-                      <button
-                        type="button"
-                        className="btn-modal-cancel"
+                      <Button
+                        variant="secondary"
+                        size="md"
                         onClick={() => setShowUploadModal(false)}
                       >
-                        Minimize Pop Up
-                      </button>
+                        Minimize Window
+                      </Button>
                     </div>
                   </>
                 ) : jobStatus === 'COMPLETED' ? (
@@ -638,10 +651,10 @@ export default function App() {
                     <div className="upload-modal-header success-header">
                       <div className="modal-header-left">
                         <div className="modal-icon-badge success-badge">
-                          <CheckCircle2 size={22} className="text-emerald" />
+                          <CheckCircle2 size={20} />
                         </div>
                         <div>
-                          <h3 className="modal-title">3D Reconstruction Completed!</h3>
+                          <h3 className="modal-title">3D Reconstruction Completed</h3>
                           <p className="modal-subtitle">
                             Source: {videoFile.name} {totalDuration ? `• Generated in ${totalDuration}` : ''}
                           </p>
@@ -651,7 +664,7 @@ export default function App() {
                         type="button"
                         className="modal-close-btn"
                         onClick={() => setShowUploadModal(false)}
-                        title="Close pop up"
+                        title="Close dialog"
                       >
                         <X size={18} />
                       </button>
@@ -660,26 +673,26 @@ export default function App() {
                     <div className="upload-modal-body modal-success-body">
                       <div className="success-hero-box">
                         <div className="success-icon-ring">
-                          <Box size={32} className="text-cyan-400" />
+                          <Box size={30} />
                         </div>
-                        <h4>Your 3D Spatial Twin is Ready!</h4>
+                        <h4>Your 3D Spatial Twin is Ready</h4>
                         <p>
                           Multi-view point cloud and textured 3D mesh have been generated and georeferenced.
                         </p>
 
                         <div className="success-meta-pills">
                           <div className="success-pill">
-                            <span className="pill-lbl">Format:</span>
+                            <span className="pill-lbl">Format</span>
                             <span className="pill-val">GLTF / GLB 3D</span>
                           </div>
                           {totalDuration && (
                             <div className="success-pill">
-                              <span className="pill-lbl">Duration:</span>
+                              <span className="pill-lbl">Duration</span>
                               <span className="pill-val">{totalDuration}</span>
                             </div>
                           )}
                           <div className="success-pill">
-                            <span className="pill-lbl">Engine:</span>
+                            <span className="pill-lbl">Engine</span>
                             <span className="pill-val">DUSt3R + 3DGS</span>
                           </div>
                         </div>
@@ -687,39 +700,37 @@ export default function App() {
                     </div>
 
                     <div className="upload-modal-footer">
-                      <a
-                        href={activeModelPath ? activeModelPath.split('?')[0] : '/models/model.glb'}
-                        download="reconstructed_model.glb"
-                        className="btn-modal-cancel"
-                        title="Download GLB for Three.js / Cesium / Blender"
+                      <Button
+                        variant="secondary"
+                        size="md"
+                        icon={<Download size={15} />}
+                        onClick={() => window.open(activeModelPath ? activeModelPath.split('?')[0] : '/models/model.glb', '_blank')}
                       >
-                        <Download size={15} />
-                        <span>Download GLB</span>
-                      </a>
+                        Download GLB
+                      </Button>
 
-                      <button
-                        type="button"
-                        className="btn-modal-start"
+                      <Button
+                        variant="primary"
+                        size="md"
                         onClick={navigateToViewer}
+                        iconRight={<ChevronRight size={16} />}
                       >
-                        <Eye size={17} />
-                        <span>Explore in Full 3D Inspector</span>
-                        <ChevronRight size={16} />
-                      </button>
+                        Explore in Full 3D Inspector
+                      </Button>
                     </div>
                   </>
                 ) : (
-                  /* 3. IDLE CONFIGURATION STATE */
+                  /* 3. SCREEN 2: REVIEW & CONFIGURATION STATE */
                   <>
                     <div className="upload-modal-header">
                       <div className="modal-header-left">
                         <div className="modal-icon-badge">
-                          <Video size={22} />
+                          <Video size={20} />
                         </div>
                         <div>
-                          <h3 className="modal-title">Configure 3D Reconstruction</h3>
+                          <h3 className="modal-title">Review & Configure Reconstruction</h3>
                           <p className="modal-subtitle">
-                            Preview aerial footage and customize keyframe extraction & 3D reconstruction parameters
+                            Inspect video preview and adjust frame capture & AI parameters
                           </p>
                         </div>
                       </div>
@@ -753,7 +764,7 @@ export default function App() {
                           </div>
                           <div className="meta-row">
                             <span className="meta-label">Size:</span>
-                            <span className="meta-val">{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                            <span className="meta-val tabular-nums">{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</span>
                           </div>
                           <div className="meta-row">
                             <span className="meta-label">Format:</span>
@@ -766,55 +777,44 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Right Column: Pipeline Settings */}
+                      {/* Right Column: Frame-capture Options Panel */}
                       <div className="modal-settings-column">
                         <h4 className="modal-section-title">
                           <Sliders size={16} />
-                          <span>Reconstruction Settings</span>
+                          <span>Frame Capture & Pipeline Options</span>
                         </h4>
 
-                        {/* Keyframe Sampling Rate */}
+                        {/* Option 1: Keyframe Sampling Rate */}
                         <div className="modal-setting-box">
-                          <div className="setting-box-header">
-                            <label>Keyframe Sampling Rate</label>
-                            <span className="setting-hint">Target FPS extracted from video for multi-view stereo</span>
-                          </div>
-                          <div className="pill-selector">
-                            {[1, 2, 4, 5].map((val) => (
-                              <button
-                                key={val}
-                                type="button"
-                                className={`pill-opt ${fps === val ? 'selected' : ''}`}
-                                onClick={() => setFps(val)}
-                              >
-                                {val} FPS
-                              </button>
-                            ))}
-                          </div>
+                          <SegmentedControl
+                            label="Keyframe Sampling Rate"
+                            description="Target FPS extracted from video for multi-view stereo"
+                            options={[
+                              { value: 1, label: '1 FPS' },
+                              { value: 2, label: '2 FPS' },
+                              { value: 4, label: '4 FPS' },
+                              { value: 5, label: '5 FPS' }
+                            ]}
+                            value={fps}
+                            onChange={setFps}
+                          />
                         </div>
 
-                        {/* YOLOv8 AI Masking */}
+                        {/* Option 2: YOLOv8 AI Masking */}
                         <div className="modal-setting-box">
-                          <div className="setting-box-header">
-                            <label>YOLOv8 AI Masking</label>
-                            <span className="setting-hint">Filters sky, vehicles & transient environmental noise</span>
-                          </div>
-                          <button
-                            type="button"
-                            className={`toggle-btn ${segmentationEnabled ? 'active' : ''}`}
-                            onClick={() => setSegmentationEnabled(!segmentationEnabled)}
-                          >
-                            <span className="toggle-slider"></span>
-                            <span className="toggle-label">{segmentationEnabled ? 'Enabled' : 'Disabled'}</span>
-                          </button>
+                          <Switch
+                            label="YOLOv8 AI Masking"
+                            description="Filters sky, moving vehicles, and transient environmental noise"
+                            checked={segmentationEnabled}
+                            onChange={setSegmentationEnabled}
+                          />
                         </div>
 
-                        {/* 3D Reconstruction Engine */}
+                        {/* Option 3: 3D Reconstruction Engine Details */}
                         <div className="modal-setting-box">
-                          <div className="setting-box-header">
-                            <label>3D Reconstruction Mode</label>
-                            <span className="setting-hint">End-to-end stereo depth regression</span>
-                          </div>
+                          <label className="ui-segmented-label" style={{ marginBottom: 4, display: 'block' }}>
+                            3D Reconstruction Mode
+                          </label>
                           <div className="engine-badge-row">
                             <span className="setting-badge-highlight">DUSt3R Multi-View Dense</span>
                             <span className="setting-badge-sub">Auto-Calibration Active</span>
@@ -823,37 +823,36 @@ export default function App() {
 
                         {/* Info Notice */}
                         <div className="modal-info-alert">
-                          <Sparkles size={16} className="text-cyan-400" style={{ flexShrink: 0, marginTop: 2 }} />
+                          <Sparkles size={16} style={{ flexShrink: 0, marginTop: 2, color: 'var(--accent-primary)' }} />
                           <p>
-                            Starting reconstruction will immediately switch this pop up into the <strong>Loading Screen</strong> while the 3D Earth background remains active.
+                            Confirming will immediately initiate keyframe extraction, depth regression, and 3D point cloud generation.
                           </p>
                         </div>
                       </div>
                     </div>
 
                     <div className="upload-modal-footer">
-                      <button
-                        type="button"
-                        className="btn-modal-cancel"
+                      <Button
+                        variant="ghost"
+                        size="md"
                         onClick={handleClearVideo}
+                        icon={<RotateCcw size={14} />}
                       >
-                        <RotateCcw size={15} />
-                        <span>Choose Different Video</span>
-                      </button>
+                        Back / choose another video
+                      </Button>
 
-                      <button
-                        type="button"
-                        className="btn-modal-start"
+                      <Button
+                        variant="primary"
+                        size="lg"
                         onClick={handleStartPipeline}
+                        iconRight={<ChevronRight size={16} />}
                       >
-                        <Zap size={18} />
-                        <span>Extract Frames & Start 3D Reconstruction</span>
-                        <ChevronRight size={16} />
-                      </button>
+                        Confirm and Generate
+                      </Button>
                     </div>
                   </>
                 )}
-              </div>
+              </GlassCard>
             </div>
           )}
 
